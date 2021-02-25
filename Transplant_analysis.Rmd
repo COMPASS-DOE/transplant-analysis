@@ -296,213 +296,50 @@ Visualizations for all control core variables are below. These are not organized
 
 Examine controls
 
-```{r data-salinity controls}
+```{r data-salinity controls, fig.show="hold", out.width="50%"}
 
 #Isolating control cores from salinity transect
 sal_con <- subset(phys_data, Transect_Type == "S" & Treatment == "Control")
 
+uga_variables <- c("Total Nitrogen (%)" = "TotalN", 
+                   "Total Carbon (%)" = "TotalC", 
+                   "LBC" = "LBC", 
+                   "LBCeq" = "LBCeq", 
+                   "pH" = "pH", 
+                   "Base Saturation (%)" = "BaseSat", 
+                   "Cation Exchange Capacity (meq/100 g)" = "CEC", 
+                   "Calcium (mg/kg)" = "Ca",
+                   "Iron (mg/kg)" = "Fe",
+                   "Potassium (mg/kg)" = "K",
+                   "Magnesium (mg/kg)" = "Mg",
+                   "Manganese (mg/kg)" = "Mn",
+                   "Sodium (mg/kg)" = "Na", 
+                   "Nickel (mg/kg)" = "Ni",
+                   "Phosphorus (mg/kg)" = "P",
+                   "Lead (mg/kg)" = "Pb", 
+                   "Zinc (mg/kg)" = "Zn")
+
 #Calculating mean with site and depth for all variables
-mean_con <- aggregate(x = sal_con[c("TotalN", "TotalC", "LBC", "LBCeq", "pH", "BaseSat", "CEC", "Ca", "Fe", "K", "Mg", "Mn", "Na", "Ni", "P", "Pb", "Zn")],
+mean_con <- aggregate(x = sal_con[uga_variables],
                       by = sal_con[c("Home_Salinity", "Depth")],
                       FUN = mean)
 
-#Visualizing control core physicochemistry by depth and site
-sal_colors <- c("#F48FB1","#E91E63","#880E4F")
-
-totalN <- ggplot() + geom_point(data = sal_con, aes(x = TotalN, y = Depth, color = Home_Salinity), size = 3) +
-  scale_y_reverse() + 
-  scale_color_manual(values = sal_colors, labels = c("Low Salinity", "Mid", "High")) +
-  ylab("Depth (cm)") +
-  xlab("Total Nitrogen (%)") +
-  geom_line(data = mean_con, aes(x = TotalN, y = Depth, color = Home_Salinity), size = 1.2) +
-  theme(axis.text=element_text(size=9),axis.title=element_text(size=18,face="bold"), legend.position = "none") +
-  facet_grid(.~Home_Salinity) +
-  theme(strip.text.x = element_text(size = 16, color = "black", face = "bold")) +
-  theme(strip.background = element_rect(color="black", size=1.2, linetype="solid"))
-
-print(totalN)
-
-totalC <- ggplot() + geom_point(data = sal_con, aes(x = TotalC, y = Depth, color = Home_Salinity), size = 3) +
-  scale_y_reverse() + 
-  scale_color_manual(values = sal_colors, labels = c("Low Salinity", "Mid", "High")) +
-  ylab("Depth (cm)") +
-  xlab("Total Carbon (%)") +
-  geom_line(data = mean_con, aes(x = TotalC, y = Depth, color = Home_Salinity), size = 1.2) +
-  theme(axis.text=element_text(size=9),axis.title=element_text(size=18,face="bold"), legend.position = "none") +
-  facet_grid(.~Home_Salinity) +
-  theme(strip.text.x = element_text(size = 16, color = "black", face = "bold")) +
-  theme(strip.background = element_rect(color="black", size=1.2, linetype="solid"))
-
-print(totalC)
-
-pH <- ggplot() + geom_point(data = sal_con, aes(x = pH, y = Depth, color = Home_Salinity), size = 3) +
-  scale_y_reverse() + 
-  scale_color_manual(values = sal_colors, labels = c("Low Salinity", "Mid", "High")) +
-  ylab("Depth (cm)") +
-  xlab("pH") +
-  geom_line(data = mean_con, aes(x = pH, y = Depth, color = Home_Salinity), size = 1.2) +
-  theme(axis.text=element_text(size=9),axis.title=element_text(size=18,face="bold"), legend.position = "none") +
-  facet_grid(.~Home_Salinity) +
-  theme(strip.text.x = element_text(size = 16, color = "black", face = "bold")) +
-  theme(strip.background = element_rect(color="black", size=1.2, linetype="solid"))
-
-print(pH)
-
-BaseSat <- ggplot() + geom_point(data = sal_con, aes(x = BaseSat, y = Depth, color = Home_Salinity), size = 3) +
-  scale_y_reverse() + 
-  scale_color_manual(values = sal_colors, labels = c("Low Salinity", "Mid", "High")) +
-  ylab("Depth (cm)") +
-  xlab("Base Saturation (%)") +
-  geom_line(data = mean_con, aes(x = BaseSat, y = Depth, color = Home_Salinity), size = 1.2) +
-  theme(axis.text=element_text(size=9),axis.title=element_text(size=18,face="bold"), legend.position = "none") +
-  facet_grid(.~Home_Salinity) +
-  theme(strip.text.x = element_text(size = 16, color = "black", face = "bold")) +
-  theme(strip.background = element_rect(color="black", size=1.2, linetype="solid"))
-
-print(BaseSat)
-
-CEC <- ggplot() + geom_point(data = sal_con, aes(x = CEC, y = Depth, color = Home_Salinity), size = 3) +
-  scale_y_reverse() + 
-  scale_color_manual(values = sal_colors, labels = c("Low Salinity", "Mid", "High")) +
-  ylab("Depth (cm)") +
-  xlab("Cation Exchange Capacity (meq/100 g)") +
-  geom_line(data = mean_con, aes(x = CEC, y = Depth, color = Home_Salinity), size = 1.2) +
-  theme(axis.text=element_text(size=9),axis.title=element_text(size=18,face="bold"), legend.position = "none") +
-  facet_grid(.~Home_Salinity) +
-  theme(strip.text.x = element_text(size = 16, color = "black", face = "bold")) +
-  theme(strip.background = element_rect(color="black", size=1.2, linetype="solid"))
-
-print(CEC)
-
-Ca <- ggplot() + geom_point(data = sal_con, aes(x = Ca, y = Depth, color = Home_Salinity), size = 3) +
-  scale_y_reverse() + 
-  scale_color_manual(values = sal_colors, labels = c("Low Salinity", "Mid", "High")) +
-  ylab("Depth (cm)") +
-  xlab("Calcium (mg/kg)") +
-  geom_line(data = mean_con, aes(x = Ca, y = Depth, color = Home_Salinity), size = 1.2) +
-  theme(axis.text=element_text(size=9),axis.title=element_text(size=18,face="bold"), legend.position = "none") +
-  facet_grid(.~Home_Salinity) +
-  theme(strip.text.x = element_text(size = 16, color = "black", face = "bold")) +
-  theme(strip.background = element_rect(color="black", size=1.2, linetype="solid"))
-
-print(Ca)
-
-Fe <- ggplot() + geom_point(data = sal_con, aes(x = Fe, y = Depth, color = Home_Salinity), size = 3) +
-  scale_y_reverse() + 
-  scale_color_manual(values = sal_colors, labels = c("Low Salinity", "Mid", "High")) +
-  ylab("Depth (cm)") +
-  xlab("Iron (mg/kg)") +
-  geom_line(data = mean_con, aes(x = Fe, y = Depth, color = Home_Salinity), size = 1.2) +
-  theme(axis.text=element_text(size=9),axis.title=element_text(size=18,face="bold"), legend.position = "none") +
-  facet_grid(.~Home_Salinity) +
-  theme(strip.text.x = element_text(size = 16, color = "black", face = "bold")) +
-  theme(strip.background = element_rect(color="black", size=1.2, linetype="solid"))
-
-print(Fe) #need to look into the Fe analysis
-
-K <- ggplot() + geom_point(data = sal_con, aes(x = K, y = Depth, color = Home_Salinity), size = 3) +
-  scale_y_reverse() + 
-  scale_color_manual(values = sal_colors, labels = c("Low Salinity", "Mid", "High")) +
-  ylab("Depth (cm)") +
-  xlab("Potassium (mg/kg)") +
-  geom_line(data = mean_con, aes(x = K, y = Depth, color = Home_Salinity), size = 1.2) +
-  theme(axis.text=element_text(size=9),axis.title=element_text(size=18,face="bold"), legend.position = "none") +
-  facet_grid(.~Home_Salinity) +
-  theme(strip.text.x = element_text(size = 16, color = "black", face = "bold")) +
-  theme(strip.background = element_rect(color="black", size=1.2, linetype="solid"))
-
-print(K)
-
-Mg <- ggplot() + geom_point(data = sal_con, aes(x = Mg, y = Depth, color = Home_Salinity), size = 3) +
-  scale_y_reverse() + 
-  scale_color_manual(values = sal_colors, labels = c("Low Salinity", "Mid", "High")) +
-  ylab("Depth (cm)") +
-  xlab("Magnesium (mg/kg)") +
-  geom_line(data = mean_con, aes(x = Mg, y = Depth, color = Home_Salinity), size = 1.2) +
-  theme(axis.text=element_text(size=9),axis.title=element_text(size=18,face="bold"), legend.position = "none") +
-  facet_grid(.~Home_Salinity) +
-  theme(strip.text.x = element_text(size = 16, color = "black", face = "bold")) +
-  theme(strip.background = element_rect(color="black", size=1.2, linetype="solid"))
-
-print(Mg)
-
-Mn <- ggplot() + geom_point(data = sal_con, aes(x = Mn, y = Depth, color = Home_Salinity), size = 3) +
-  scale_y_reverse() + 
-  scale_color_manual(values = sal_colors, labels = c("Low Salinity", "Mid", "High")) +
-  ylab("Depth (cm)") +
-  xlab("Manganese (mg/kg)") +
-  geom_line(data = mean_con, aes(x = Mn, y = Depth, color = Home_Salinity), size = 1.2) +
-  theme(axis.text=element_text(size=9),axis.title=element_text(size=18,face="bold"), legend.position = "none") +
-  facet_grid(.~Home_Salinity) +
-  theme(strip.text.x = element_text(size = 16, color = "black", face = "bold")) +
-  theme(strip.background = element_rect(color="black", size=1.2, linetype="solid"))
-
-print(Mn)
-
-Na <- ggplot() + geom_point(data = sal_con, aes(x = Na, y = Depth, color = Home_Salinity), size = 3) +
-  scale_y_reverse() + 
-  scale_color_manual(values = sal_colors, labels = c("Low Salinity", "Mid", "High")) +
-  ylab("Depth (cm)") +
-  xlab("Sodium (mg/kg)") +
-  geom_line(data = mean_con, aes(x = Na, y = Depth, color = Home_Salinity), size = 1.2) +
-  theme(axis.text=element_text(size=9),axis.title=element_text(size=18,face="bold"), legend.position = "none") +
-  facet_grid(.~Home_Salinity) +
-  theme(strip.text.x = element_text(size = 16, color = "black", face = "bold")) +
-  theme(strip.background = element_rect(color="black", size=1.2, linetype="solid"))
-
-print(Na)
-
-Ni <- ggplot() + geom_point(data = sal_con, aes(x = Ni, y = Depth, color = Home_Salinity), size = 3) +
-  scale_y_reverse() + 
-  scale_color_manual(values = sal_colors, labels = c("Low Salinity", "Mid", "High")) +
-  ylab("Depth (cm)") +
-  xlab("Nickel (mg/kg)") +
-  geom_line(data = mean_con, aes(x = Ni, y = Depth, color = Home_Salinity), size = 1.2) +
-  theme(axis.text=element_text(size=9),axis.title=element_text(size=18,face="bold"), legend.position = "none") +
-  facet_grid(.~Home_Salinity) +
-  theme(strip.text.x = element_text(size = 16, color = "black", face = "bold")) +
-  theme(strip.background = element_rect(color="black", size=1.2, linetype="solid"))
-
-print(Ni)
-
-P <- ggplot() + geom_point(data = sal_con, aes(x = P, y = Depth, color = Home_Salinity), size = 3) +
-  scale_y_reverse() + 
-  scale_color_manual(values = sal_colors, labels = c("Low Salinity", "Mid", "High")) +
-  ylab("Depth (cm)") +
-  xlab("Phosphorus (mg/kg)") +
-  geom_line(data = mean_con, aes(x = P, y = Depth, color = Home_Salinity), size = 1.2) +
-  theme(axis.text=element_text(size=9),axis.title=element_text(size=18,face="bold"), legend.position = "none") +
-  facet_grid(.~Home_Salinity) +
-  theme(strip.text.x = element_text(size = 16, color = "black", face = "bold")) +
-  theme(strip.background = element_rect(color="black", size=1.2, linetype="solid"))
-
-print(P)
-
-Pb <- ggplot() + geom_point(data = sal_con, aes(x = Pb, y = Depth, color = Home_Salinity), size = 3) +
-  scale_y_reverse() + 
-  scale_color_manual(values = sal_colors, labels = c("Low Salinity", "Mid", "High")) +
-  ylab("Depth (cm)") +
-  xlab("Lead (mg/kg)") +
-  geom_line(data = mean_con, aes(x = Pb, y = Depth, color = Home_Salinity), size = 1.2) +
-  theme(axis.text=element_text(size=9),axis.title=element_text(size=18,face="bold"), legend.position = "none") +
-  facet_grid(.~Home_Salinity) +
-  theme(strip.text.x = element_text(size = 16, color = "black", face = "bold")) +
-  theme(strip.background = element_rect(color="black", size=1.2, linetype="solid"))
-
-print(Pb)
-
-Zn <- ggplot() + geom_point(data = sal_con, aes(x = Zn, y = Depth, color = Home_Salinity), size = 3) +
-  scale_y_reverse() + 
-  scale_color_manual(values = sal_colors, labels = c("Low Salinity", "Mid", "High")) +
-  ylab("Depth (cm)") +
-  xlab("Zinc (mg/kg)") +
-  geom_line(data = mean_con, aes(x = Zn, y = Depth, color = Home_Salinity), size = 1.2) +
-  theme(axis.text=element_text(size=9),axis.title=element_text(size=18,face="bold"), legend.position = "none") +
-  facet_grid(.~Home_Salinity) +
-  theme(strip.text.x = element_text(size = 16, color = "black", face = "bold")) +
-  theme(strip.background = element_rect(color="black", size=1.2, linetype="solid"))
-
-print(Zn)
+# Go through UGA variables and generate a plot for each
+for(uv in seq_along(uga_variables)) {
+  p <- ggplot(sal_con, 
+         aes_string(x = uga_variables[uv], y = "Depth", color = "Home_Salinity")) +
+    geom_point(size = 3) +
+    depth_plot_yscale + 
+    depth_plot_color +
+    ylab("Depth (cm)") +
+    xlab(names(uga_variables)[uv]) +
+    geom_line(data = mean_con, 
+              aes_string(x = uga_variables[uv], y = "Depth", color = "Home_Salinity"), 
+              size = 1.2) +
+    depth_plot_theme +
+    facet_grid(.~Home_Salinity) 
+  print(p)
+}
 
 ```
 Low Salinity Transplants
@@ -604,7 +441,6 @@ lowC_site <- ggplot() + geom_point(data = sal_low, aes(x = TotalC, y = Depth, co
   theme(strip.background = element_rect(color="black", size=1.2, linetype="solid"))
 
 print(lowC_site)
-
 
 ```
 
