@@ -383,64 +383,55 @@ ave_sal_lowcon <- rbind(mean_con, mean_lowtrans)
 home_colors <- c("#F48FB1","#E91E63","#880E4F")
 
 #Across the gradient
-lowN_grad <- ggplot() + geom_point(data = sal_lowcon, aes(x = TotalN, y = Depth, color = Home_Salinity, shape = Treatment), size = 3) +
+lowN_grad <- ggplot(data = sal_lowcon, aes(x = TotalN, y = Depth, color = Home_Salinity)) +
+  geom_point(aes(shape = Treatment), size = 3) +
   scale_y_reverse() +
   scale_color_manual(values = home_colors, labels = c("Low", "Mid", "High")) +
   scale_shape_manual(values = c(19, 24)) +
   ylab("Depth (cm)") +
   xlab(bquote('Total Nitrogen (%)')) +
-  geom_line(data = ave_sal_lowcon, aes(x = TotalN, y = Depth, color = Home_Salinity, linetype = Treatment), size = 1.2) +
-  theme(axis.text=element_text(size=9),axis.title=element_text(size=18,face="bold"), legend.position = "none") +
+  geom_line(data = ave_sal_lowcon, aes(linetype = Treatment), size = 1.2) +
   facet_grid(.~Local_Salinity) +
-  theme(strip.text.x = element_text(size = 16, color = "black", face = "bold")) +
-  theme(strip.background = element_rect(color="black", size=1.2, linetype="solid"))
+  depth_plot_theme
 
 print(lowN_grad)
 
 #At home site
-lowN_site <- ggplot() + geom_point(data = sal_low, aes(x = TotalN, y = Depth, color = Local_Salinity, shape = Treatment), size = 3) +
-  scale_y_reverse() +
+lowN_site <- ggplot(data = sal_low, aes(x = TotalN, y = Depth, color = Local_Salinity)) +
+  geom_point(aes(shape = Treatment), size = 3) +
+  scale_y_reverse("Depth (cm)") +
   scale_color_manual(values = home_colors, labels = c("Low", "Mid", "High")) +
   scale_shape_manual(values = c(19, 24)) +
-  ylab("Depth (cm)") +
-  xlab(bquote('Total Nitrogen (%)')) +
+  xlab("Total Nitrogen (%)") +
   ggtitle("Low Salinity Site") +
-  geom_line(data = mean_low, aes(x = TotalN, y = Depth, color = Local_Salinity, linetype = Treatment), size = 1.2) +
-  theme(axis.text=element_text(size=9),axis.title=element_text(size=18,face="bold")) +
-  theme(strip.text.x = element_text(size = 16, color = "black", face = "bold")) +
-  theme(strip.background = element_rect(color="black", size=1.2, linetype="solid"))
+  geom_line(data = mean_low, aes(linetype = Treatment), size = 1.2) +
+  depth_plot_theme
 
 print(lowN_site)
 
 #Across the gradient
-lowC_grad <- ggplot() + geom_point(data = sal_lowcon, aes(x = TotalC, y = Depth, color = Home_Salinity, shape = Treatment), size = 3) +
-  scale_y_reverse() +
+lowC_grad <- ggplot(data = sal_lowcon, aes(x = TotalC, y = Depth, color = Home_Salinity)) + 
+  geom_point(aes(shape = Treatment), size = 3) +
+  scale_y_reverse("Depth (cm)") +
   scale_color_manual(values = home_colors, labels = c("Low", "Mid", "High")) +
   scale_shape_manual(values = c(19, 24)) +
-  ylab("Depth (cm)") +
-  xlab(bquote('Total Carbon (%)')) +
-  geom_line(data = ave_sal_lowcon, aes(x = TotalC, y = Depth, color = Home_Salinity, linetype = Treatment), size = 1.2) +
-  theme(axis.text=element_text(size=9),axis.title=element_text(size=18,face="bold"), legend.position = "none") +
+  xlab("Total Carbon (%)") +
+  geom_line(data = ave_sal_lowcon, aes(linetype = Treatment), size = 1.2) +
   facet_grid(.~Local_Salinity) +
-  theme(strip.text.x = element_text(size = 16, color = "black", face = "bold")) +
-  theme(strip.background = element_rect(color="black", size=1.2, linetype="solid"))
+  depth_plot_theme
 
 print(lowC_grad)
 
 #At home site
-lowC_site <- ggplot() + geom_point(data = sal_low, aes(x = TotalC, y = Depth, color = Local_Salinity, shape = Treatment), size = 3) +
-  scale_y_reverse() +
+lowC_site <- ggplot(data = sal_low, aes(x = TotalC, y = Depth, color = Local_Salinity)) + 
+  geom_point(aes(shape = Treatment), size = 3) +
+  scale_y_reverse("Depth (cm)") +
   scale_color_manual(values = home_colors, labels = c("Low", "Mid", "High")) +
   scale_shape_manual(values = c(19, 24)) +
-  ylab("Depth (cm)") +
-  xlab(bquote('Total Carbon (%)')) +
+  xlab("Total Carbon (%)") +
   ggtitle("Low Salinity Site") +
-  geom_line(data = mean_low, aes(x = TotalC, y = Depth, color = Local_Salinity, linetype = Treatment), size = 1.2) +
-  theme(axis.text=element_text(size=9),axis.title=element_text(size=18,face="bold")) +
-  theme(strip.text.x = element_text(size = 16, color = "black", face = "bold")) +
-  theme(strip.background = element_rect(color="black", size=1.2, linetype="solid"))
+  geom_line(data = mean_low, aes(linetype = Treatment), size = 1.2) +
+  depth_plot_theme
 
 print(lowC_site)
-
 ```
-
