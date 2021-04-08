@@ -43,3 +43,6 @@ vignettes/*.pdf
 
 # R markdown products
 *.html
+
+# Anya-Ben meeting stuff
+meeting_material/
