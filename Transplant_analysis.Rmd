@@ -1,5 +1,5 @@
 ---
-title: "PNNL/SERC Soil Transplant Experiment - Data Exploration and Statistical Analysis"
+title: "PNNL/SERC Soil Transplant Experiment - Data Visualization and Statistical Analysis"
 author: "Anya Hopple and Ben Bond-Lamberty"
 date: "`r format(Sys.time(), '%d %B %Y')`"
 output: 
@@ -13,626 +13,85 @@ output:
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 
+library(lubridate)
+library(tidyr)
+library(dplyr)
 library(ggplot2)
+library(tidyverse)
+library(ggpubr)
+library(rstatix)
+library(zoo)
 theme_set(theme_bw())
-library(readr)
 ```
-
-**Project Overview:** Coastal terrestrial-aquatic interface (TAI) ecosystems exhibit particular sensitivity to changes in climate and sea level, but the response of soil carbon cycling to changing salinity and water availability remains poorly understood. As a part of a broader COMPASS Program effort to understand coastal ecosystem resilience and responses to future change, this experiment took advantage of natural salinity and elevation gradients at the Smithsonian Environmental Research Center (SERC) in eastern Maryland, USA, to examine how soil processes and structure may change under novel hydrologic regimes. 
-
-**Research Questions:** 
-
--  How do coastal TAI soil respiration rates respond to changing salinity and water availability? 
--  Are coastal TAI soil respiration rate responses regulated by physicochemical properties? 
--  Are these responses depth-specific?
-
-**Experimental Design:** Large (40 cm wide x 20 cm deep) soil cores were transplanted in a reciprocal design between plots varying in seawater exposure and elevation above the creek (Figure 1); we continuously monitored soil respiration rates for two years and analyzed physicochemical properties at multiple core depth increments (0-5, 5-10, and 10-20 cm) following this measurement period.
-
-![](Visuals/Transplant exp design.jpg)
-**Figure 1.** Reciprocal design of the soil transplant experiment.
-
-**Preliminary Data Analysis:** We have measured 18 physicochemical variables. We can break our soil chemical properties into the below categories:
-
--  Fertility indicators: Base Saturation (%), Cation Exchange Capacity (meq/100g), pH
--  Carbon and major nutrient: Total C (%), Total N (%), Phosphorus (mg/kg), Potassium (mg/kg)
--  Secondary nutrients: Calcium (mg/kg), Magnesium (mg/kg)
--  Minor nutrients: Iron (mg/kg), Manganese (mg/kg), Copper (mg/kg), Zinc (mg/kg), Molybdenum (mg/kg)
--  Reactive alkali metals: Sodium (mg/kg), Potassium (mg/kg) 
--  Contaminants: Cadmium (mg/kg), Copper (mg/kg), Lead (mg/kg), and Zinc (mg/kg)
-
-Some are in two categories above and others that are of minor interest have not been listed yet. Still thinking about these groupings...might change things around.
-
-In the following section, we will explore the effect of increasing **salinity** on soil chemical properties. Investigations will be grouped using the above categories and will include the following visualizations:
-
--  Control core depth profiles across the salinity gradient
--  Low salinity transplant cores (1) across the salinity gradient and (2) at home site
--  Mid salinity transplant cores (1) across the salinity gradient and (2) at home site
--  High salinity transplant cores (1) across the salinity gradient and (2) at home site
--  Thinking about an overall figure...but am worried it will be very overwhelming and difficult to interpret
-
-I started by visualizing all of the control data. Going to use Base Saturataion as an example of the above process.
-
-**FERTILITY INDICATORS**
-
-```{r data-file examination, results = 'hide'}
-#Does resuts=FALSE keep it from showing up in the R Markdown file?
-
-#EXAMINE DATA FRAME STRUCTURE
-#Read in physicochemical data
-phys_data <- read_csv("Data/TransplantExp_PhysicoData_All_02242021_v2.csv") #Need to specify columns? Either c = categorical or d=? something numeric?
-
-#Examine data file
-summary(phys_data)
-str(phys_data)
-
-#Assigning variable levels for graphing purposes.
-phys_data$Home_Salinity = factor(phys_data$Home_Salinity, levels=c("Low", "Mid", "High"))
-
-#Data file looks good. 204 samples. 8 missing from C&N analysis due to instrument issue. Cd, Cr, CU, and Mo reporting as character due to UGA "<" designations. Need to come back to those variables. 
-```
-
-
-```{r data-file manipulation}
-#MANIPULATE DATA FRAMES
-
-#1. Control core depth profiles across the salinity gradient
-#Isolating control cores from salinity transect
-sal_con <- subset(phys_data, Transect_Type == "S" & Treatment == "Control")
-
-#Calculating mean with site and depth for all variables
-mean_con <- aggregate(x = sal_con[c("TotalN", "TotalC", "LBC", "LBCeq", "pH", "BaseSat", "CEC", "Ca", "Fe", "K", "Mg", "Mn", "Na", "Ni", "P", "Pb", "Zn")],
-                      by = sal_con[c("Home_Salinity", "Depth")],
-                      FUN = mean)
-
-#2. Low salinity transplant cores (1) across the salinity gradient and (2) at home site 
-#Isolating low salinity cores - control and transplant
-sal_low <- subset(phys_data, Transect_Type == "S" & Home_Salinity == "Low")
-sal_low$Local_Salinity <- c("High","High","High","High","High","High","High","High","High","High","High","High","Mid","Mid","Mid","Mid","Mid","Mid","Mid","Mid","Mid","Mid","Mid","Mid","Low","Low","Low","Low","Low","Low","Low","Low","Low","Low","Low","Low")
-
-#Assigning variable levels for graphing purposes.
-sal_low$Local_Salinity = factor(sal_low$Local_Salinity, levels=c("Low", "Mid", "High"))
-
-mean_low <- aggregate(x = sal_low[c("TotalN", "TotalC", "LBC", "LBCeq", "pH", "BaseSat", "CEC", "Ca", "Fe", "K", "Mg", "Mn", "Na", "Ni", "P", "Pb", "Zn")],
-                      by = sal_low[c("Depth", "Local_Salinity", "Treatment")],
-                      FUN = mean)
-
-#Isolating low salinity transplant cores from salinity transect
-sal_lowtrans <- subset(phys_data, Transect_Type == "S" & Treatment == "Transplant" & Home_Salinity == "Low")
-
-#Add a "local salinity" column to group with control data
-sal_lowtrans$Local_Salinity <- sal_lowtrans$Transplant_Salinity
-sal_con$Local_Salinity <- sal_con$Home_Salinity
-
-#Merging dataframes
-sal_lowcon <- rbind(sal_con, sal_lowtrans)
-
-#Calculating mean with site and depth for all variables
-mean_lowtrans <- aggregate(x = sal_lowtrans[c("TotalN", "TotalC", "LBC", "LBCeq", "pH", "BaseSat", "CEC", "Ca", "Fe", "K", "Mg", "Mn", "Na", "Ni", "P", "Pb", "Zn")],
-                      by = sal_lowtrans[c("Home_Salinity", "Depth", "Local_Salinity", "Treatment")],
-                      FUN = mean)
-
-mean_con <- aggregate(x = sal_con[c("TotalN", "TotalC", "LBC", "LBCeq", "pH", "BaseSat", "CEC", "Ca", "Fe", "K", "Mg", "Mn", "Na", "Ni", "P", "Pb", "Zn")],
-                      by = sal_con[c("Home_Salinity", "Depth", "Local_Salinity", "Treatment")],
-                      FUN = mean)
-
-#Mergrin dataframes
-ave_sal_lowcon <- rbind(mean_con, mean_lowtrans)
-
-#3. Mid salinity transplant cores (1) across the salinity gradient and (2) at home site
-#Isolating MID salinity cores - control and transplant
-sal_mid <- subset(phys_data, Transect_Type == "S" & Home_Salinity == "Mid")
-sal_mid$Local_Salinity <- c("High","High","High","High","High","High","High","High","High","High","High","High","Mid","Mid","Mid","Mid","Mid","Mid","Mid","Mid","Mid","Mid","Mid","Mid","Low","Low","Low","Low","Low","Low","Low","Low","Low","Low","Low","Low")
-
-#Assigning variable levels for graphing purposes.
-sal_mid$Local_Salinity = factor(sal_mid$Local_Salinity, levels=c("Low", "Mid", "High"))
-
-mean_mid <- aggregate(x = sal_mid[c("TotalN", "TotalC", "LBC", "LBCeq", "pH", "BaseSat", "CEC", "Ca", "Fe", "K", "Mg", "Mn", "Na", "Ni", "P", "Pb", "Zn")],
-                      by = sal_mid[c("Depth", "Local_Salinity", "Treatment")],
-                      FUN = mean)
-
-#Isolating low salinity transplant cores from salinity transect
-sal_midtrans <- subset(phys_data, Transect_Type == "S" & Treatment == "Transplant" & Home_Salinity == "Mid")
-
-#Add a "local salinity" column to group with control data
-sal_midtrans$Local_Salinity <- sal_midtrans$Transplant_Salinity
-
-#Merging dataframes
-sal_midcon <- rbind(sal_con, sal_midtrans)
-
-#Calculating mean with site and depth for all variables
-mean_midtrans <- aggregate(x = sal_midtrans[c("TotalN", "TotalC", "LBC", "LBCeq", "pH", "BaseSat", "CEC", "Ca", "Fe", "K", "Mg", "Mn", "Na", "Ni", "P", "Pb", "Zn")],
-                      by = sal_midtrans[c("Home_Salinity", "Depth", "Local_Salinity", "Treatment")],
-                      FUN = mean)
-
-#Mergrin dataframes
-ave_sal_midcon <- rbind(mean_con, mean_midtrans)
-
-#4. High salinity transplant cores (1) across the salinity gradient and (2) at home site
-#Isolating high salinity cores - control and transplant
-sal_high <- subset(phys_data, Transect_Type == "S" & Home_Salinity == "High")
-sal_high$Local_Salinity <- c("High","High","High","High","High","High","High","High","High","High","High","High","Mid","Mid","Mid","Mid","Mid","Mid","Mid","Mid","Mid","Mid","Mid","Mid","Low","Low","Low","Low","Low","Low","Low","Low","Low","Low","Low","Low")
-
-#Assigning variable levels for graphing purposes.
-sal_high$Local_Salinity = factor(sal_high$Local_Salinity, levels=c("Low", "Mid", "High"))
-
-sal_high <- subset(sal_high, !Treatment == "Dist_Control")
-
-mean_high <- aggregate(x = sal_high[c("TotalN", "TotalC", "LBC", "LBCeq", "pH", "BaseSat", "CEC", "Ca", "Fe", "K", "Mg", "Mn", "Na", "Ni", "P", "Pb", "Zn")],
-                      by = sal_high[c("Depth", "Local_Salinity", "Treatment")],
-                      FUN = mean)
-
-mean_high <- subset(mean_high, !Treatment == "Dist_Control")
-
-#Isolating low salinity transplant cores from salinity transect
-sal_hightrans <- subset(phys_data, Transect_Type == "S" & Treatment == "Transplant" & Home_Salinity == "High")
-
-#Add a "local salinity" column to group with control data
-sal_hightrans$Local_Salinity <- sal_hightrans$Transplant_Salinity
-
-#Merging dataframes
-sal_highcon <- rbind(sal_con, sal_hightrans)
-
-#Calculating mean with site and depth for all variables
-mean_hightrans <- aggregate(x = sal_hightrans[c("TotalN", "TotalC", "LBC", "LBCeq", "pH", "BaseSat", "CEC", "Ca", "Fe", "K", "Mg", "Mn", "Na", "Ni", "P", "Pb", "Zn")],
-                      by = sal_hightrans[c("Home_Salinity", "Depth", "Local_Salinity", "Treatment")],
-                      FUN = mean)
-
-#Mergrin dataframes
-ave_sal_highcon <- rbind(mean_con, mean_hightrans)
-```
-
-1. Control core depth profiles across the salinity gradient
-
-```{r data-visualizations-1}
-#VISUALIZE.
-
-#1. Control core depth profiles across the salinity gradient
-sal_colors <- c("#F48FB1","#E91E63","#880E4F")
-
-BaseSat <- ggplot() + geom_point(data = sal_con, aes(x = BaseSat, y = Depth, color = Home_Salinity), size = 3) +
-  scale_y_reverse() + 
-  scale_color_manual(values = sal_colors, labels = c("Low Salinity", "Mid", "High")) +
-  ylab(bquote('Depth (cm)')) +
-  xlab(bquote('Base Saturation (%)')) +
-  geom_line(data = mean_con, aes(x = BaseSat, y = Depth, color = Home_Salinity), size = 1.2) +
-  theme(axis.text=element_text(size=9),axis.title=element_text(size=18,face="bold"), legend.position = "none") +
-  facet_grid(.~Home_Salinity) +
-  theme(strip.text.x = element_text(size = 16, color = "black", face = "bold")) +
-  theme(strip.background = element_rect(color="black", size=1.2, linetype="solid"))
-
-print(BaseSat)
-```
-
-2. Low salinity transplant cores (1) across the salinity gradient and (2) at home site 
-
-```{r data-visualizations-2}
-#2. Low salinity transplant cores (1) across the salinity gradient and (2) at home site 
-home_colors <- c("#F48FB1","#E91E63","#880E4F")
-
-#Across the gradient
-lowBS_grad <- ggplot() + geom_point(data = sal_lowcon, aes(x = BaseSat, y = Depth, color = Home_Salinity, shape = Treatment), size = 3) +
-  scale_y_reverse() +
-  scale_color_manual(values = home_colors, labels = c("Low", "Mid", "High")) +
-  scale_shape_manual(values = c(19, 24)) +
-  ylab(bquote('Depth (cm)')) +
-  xlab(bquote('Base Saturation (%)')) +
-  geom_line(data = ave_sal_lowcon, aes(x = BaseSat, y = Depth, color = Home_Salinity, linetype = Treatment), size = 1.2) +
-  theme(axis.text=element_text(size=9),axis.title=element_text(size=18,face="bold"), legend.position = "none") +
-  facet_grid(.~Local_Salinity) +
-  theme(strip.text.x = element_text(size = 16, color = "black", face = "bold")) +
-  theme(strip.background = element_rect(color="black", size=1.2, linetype="solid"))
-
-print(lowBS_grad)
-
-#At home site
-lowBS_site <- ggplot() + geom_point(data = sal_low, aes(x = BaseSat, y = Depth, color = Local_Salinity, shape = Treatment), size = 3) +
-  scale_y_reverse() +
-  scale_color_manual(values = home_colors, labels = c("Low", "Mid", "High")) +
-  scale_shape_manual(values = c(19, 24)) +
-  ylab(bquote('Depth (cm)')) +
-  xlab(bquote('Base Saturation (%)')) +
-  ggtitle("Low Salinity Site") +
-  geom_line(data = mean_low, aes(x = BaseSat, y = Depth, color = Local_Salinity, linetype = Treatment), size = 1.2) +
-  theme(axis.text=element_text(size=9),axis.title=element_text(size=18,face="bold")) +
-  theme(strip.text.x = element_text(size = 16, color = "black", face = "bold")) +
-  theme(strip.background = element_rect(color="black", size=1.2, linetype="solid"))
-
-print(lowBS_site)
-```
-
-3. Mid salinity transplant cores (1) across the salinity gradient and (2) at home site 
-
-```{r data-visualizations-3}
-#3. Mid salinity transplant cores (1) across the salinity gradient and (2) at home site 
-
-#Across the gradient
-midBS_grad <- ggplot() + geom_point(data = sal_midcon, aes(x = BaseSat, y = Depth, color = Home_Salinity, shape = Treatment), size = 3) +
-  scale_y_reverse() +
-  scale_color_manual(values = home_colors, labels = c("Low", "Mid", "High")) +
-  scale_shape_manual(values = c(19, 24)) +
-  ylab(bquote('Depth (cm)')) +
-  xlab(bquote('Base Saturation (%)')) +
-  geom_line(data = ave_sal_midcon, aes(x = BaseSat, y = Depth, color = Home_Salinity, linetype = Treatment), size = 1.2) +
-  theme(axis.text=element_text(size=9),axis.title=element_text(size=18,face="bold"), legend.position = "none") +
-  facet_grid(.~Local_Salinity) +
-  theme(strip.text.x = element_text(size = 16, color = "black", face = "bold")) +
-  theme(strip.background = element_rect(color="black", size=1.2, linetype="solid"))
-
-print(midBS_grad)
-
-#At home site
-midBS_site <- ggplot() + geom_point(data = sal_mid, aes(x = BaseSat, y = Depth, color = Local_Salinity, shape = Treatment), size = 3) +
-  scale_y_reverse() +
-  scale_color_manual(values = home_colors, labels = c("Low", "Mid", "High")) +
-  scale_shape_manual(values = c(19, 24)) +
-  ylab(bquote('Depth (cm)')) +
-  xlab(bquote('Base Saturation (%)')) +
-  ggtitle("Mid Salinity Site") +
-  geom_line(data = mean_mid, aes(x = BaseSat, y = Depth, color = Local_Salinity, linetype = Treatment), size = 1.2) +
-  theme(axis.text=element_text(size=9),axis.title=element_text(size=18,face="bold")) +
-  theme(strip.text.x = element_text(size = 16, color = "black", face = "bold")) +
-  theme(strip.background = element_rect(color="black", size=1.2, linetype="solid"))
-
-print(midBS_site)
-```
-
-4. High salinity transplant cores (1) across the salinity gradient and (2) at home site
-
-```{r data-visualizations-4}
-#4. High salinity transplant cores (1) across the salinity gradient and (2) at home site 
-
-#Across the gradient
-highBS_grad <- ggplot() + geom_point(data = sal_highcon, aes(x = BaseSat, y = Depth, color = Home_Salinity, shape = Treatment), size = 3) +
-  scale_y_reverse() +
-  scale_color_manual(values = home_colors, labels = c("Low", "Mid", "High")) +
-  scale_shape_manual(values = c(19, 24)) +
-  ylab(bquote('Depth (cm)')) +
-  xlab(bquote('Base Saturation (%)')) +
-  geom_line(data = ave_sal_highcon, aes(x = BaseSat, y = Depth, color = Home_Salinity, linetype = Treatment), size = 1.2) +
-  theme(axis.text=element_text(size=9),axis.title=element_text(size=18,face="bold"), legend.position = "none") +
-  facet_grid(.~Local_Salinity) +
-  theme(strip.text.x = element_text(size = 16, color = "black", face = "bold")) +
-  theme(strip.background = element_rect(color="black", size=1.2, linetype="solid"))
-
-print(highBS_grad)
-
-#At home site
-highBS_site <- ggplot() + geom_point(data = sal_high, aes(x = BaseSat, y = Depth, color = Local_Salinity, shape = Treatment), size = 3) +
-  scale_y_reverse() +
-  scale_color_manual(values = home_colors, labels = c("Low", "Mid", "High")) +
-  scale_shape_manual(values = c(19, 24)) +
-  ylab(bquote('Depth (cm)')) +
-  xlab(bquote('Base Saturation (%)')) +
-  ggtitle("High Salinity Site") +
-  geom_line(data = mean_high, aes(x = BaseSat, y = Depth, color = Local_Salinity, linetype = Treatment), size = 1.2) +
-  theme(axis.text=element_text(size=9),axis.title=element_text(size=18,face="bold")) +
-  theme(strip.text.x = element_text(size = 16, color = "black", face = "bold")) +
-  theme(strip.background = element_rect(color="black", size=1.2, linetype="solid"))
-
-print(highBS_site)
+# JUSTIFICATION:
+* Forest ecosystems are important agents of water, nutrient, carbon, and energy flux that dominate biogeochemical cycling at scales ranging from watersheds to landscapes to planets. Most notably, these ecosystems are dominant terrestrial sources and sinks of greenhouse gasses, storing 45% of terrestrial carbon and contributing 50% of terrestrial net primary production.
+* Water is a key variable that simultaneously controls and responds to all other biological, physical, and chemical processes in forest ecosystems. The mechanisms by which changes in water availability and distribution regulate soil biogeochemistry and greenhouse gas emissions has been investigated in upland forests and to a lesser extent in wetland forests.
+* The frequency of extreme events is increasing worldwide, exposing coastal forests to novel hydrologic regimes and the consequences of such events are penetrating deeper into these ecosystems with sea-level rise and increasingly intense precipitation events. 
+* Understanding coastal forest responses to changing salinity and inundation is critical to enhancing our ability to predict shifts in local and global biogeochemical cycling.
+
+# RESEARCH QUESTIONS:
+What are the effects of changing oligohaline seawater exposure on coastal forest soil carbon cycling and underlying chemical drivers in soils with **(A.)** and without **(B.)** seawater and inundation legacies?
+
+A. = proxy for press disturbance, such as sea level rise
+B. = proxy for pulse disturbance, such as extreme storm surge
+
+# HYPOTHESES:
+**(A.)** When soils have a history of exposure to seawater and prolonged inundation, increasing oligohaline seawater exposure will stimulate CO2 flux due to (1) heightened sulfate availability, (2) minimal osmotic stress, (3) higher carbon quality, and (4) greater cation exchange capacity.
+
+**(B.)** When soils have no history of exposure to seawater and prolonged inundation, increasing oligohaline seawater exposure will suppress CO2 flux due to increased microbial community stress, resulting from osmotic regulation and decreased oxygen availability.
+
+# EXPERIMENT:
+* This experiment took advantage of natural salinity and elevation gradients along a tidal creek at the Smithsonian Environmental Research Center in eastern Maryland, U.S.A, to examine how coastal forest soil carbon cycling and chemistry may change under novel hydrologic regimes.
+* Large (40 cm wide, 20 cm deep) soil cores were transplanted in a reciprocal design between plots varying in seawater exposure and inundation.
+* Soil carbon dioxide and methane fluxes were monitored ~semi-monthly for two years (April 2018-April 2020) and six months (October 2019-April 2020), respectively. Soil temperature and volumetric water content at 5 cm were recorded during each sampling event. 
+* Soil samples (0-5, 5-10, and 10-20 cm) were collected from each soil mesocosm in April 2020 for a suite of soil chemistry analyses.
+
+# RESULTS:
+## Soils with seawater exposure legacy 
+
+```{r variation in site salinity mean and range, eval=FALSE, echo=FALSE}
+#Conductivity data from the Soil Transplant and Marsh Organ Experiments were combined to assess site salinity
+
+#Package wql: Exploring Water Quality and Monitoring data and Function ec2pss were used to convert data from 
+#electrical conductivity to ppt
+
+#Values were then exported into Transplant_Salinity.csv
+sal <- read.csv("Transplant_Salinity.csv")
+
+sal %>%
+  separate(Sampling_Event, into=c("Month", "Day", "Year"), sep = "/") %>%
+  unite("Date", Year, Month, Day, sep="-") %>%
+  mutate(Date=as.Date(Date)) %>%
+  mutate(Site = factor(Site, levels=c("NorthFork", "CanoeShed", "GCREW"), labels=c("Low Salinity Site", "Mid Salinity Site", "High Salinity Site"))) %>%
+  #Adding julian day
+  mutate(jday = yday(Date)) ->
+  sal
+
+#Visualizing salinity changes over time using julian days
+ggplot() +
+  geom_point(aes(sal$jday, sal$meanSal, color=sal$Site),size=1.5) +
+  xlab("Julian Day") +
+  ylab("Salinity (ppt)") +
+  scale_color_manual(values=c("turquoise3","gold2","violetred2"))
+
+sal %>%
+  group_by(Site) %>%
+  get_summary_stats(meanSal, type="mean_sd") ->
+  sal_mean
+
+ggplot() +
+  geom_point(aes(sal$meanSal, sal$Site, color=sal$Site),size=1.5) +
+  geom_point(aes(sal_mean$mean, sal_mean$Site, color=sal_mean$Site), size=5) +
+  xlab("Salinity (ppt)") +
+  ylab("") +
+  theme(axis.text.x=element_text(face = "bold", size = 14),
+        axis.text.y=element_text(face="bold", size=16),
+        axis.title=element_text(face="bold", size=16),
+        legend.position = "none") +
+  scale_color_manual(values=c("turquoise3","gold2","violetred2"))
 ```
 
 
-```{r data-ingest}
-# Read in data from premis-ghg (SP and BBL's greenhouse gas repository)
-licor_daily_data <- read_csv("data/premis-ghg/licor_daily_data.csv",
-                             col_types = "Tdccddddd")
-#What do the column designations mean? 
-```
-
-Visualizations for all control core variables are below. These are not organized or cleaned-up. 
-
-Examine controls
-
-```{r data-salinity controls}
-
-#Isolating control cores from salinity transect
-sal_con <- subset(phys_data, Transect_Type == "S" & Treatment == "Control")
-
-#Calculating mean with site and depth for all variables
-mean_con <- aggregate(x = sal_con[c("TotalN", "TotalC", "LBC", "LBCeq", "pH", "BaseSat", "CEC", "Ca", "Fe", "K", "Mg", "Mn", "Na", "Ni", "P", "Pb", "Zn")],
-                      by = sal_con[c("Home_Salinity", "Depth")],
-                      FUN = mean)
-
-#Visualizing control core physicochemistry by depth and site
-sal_colors <- c("#F48FB1","#E91E63","#880E4F")
-
-totalN <- ggplot() + geom_point(data = sal_con, aes(x = TotalN, y = Depth, color = Home_Salinity), size = 3) +
-  scale_y_reverse() + 
-  scale_color_manual(values = sal_colors, labels = c("Low Salinity", "Mid", "High")) +
-  ylab(bquote('Depth (cm)')) +
-  xlab(bquote('Total Nitrogen (%)')) +
-  geom_line(data = mean_con, aes(x = TotalN, y = Depth, color = Home_Salinity), size = 1.2) +
-  theme(axis.text=element_text(size=9),axis.title=element_text(size=18,face="bold"), legend.position = "none") +
-  facet_grid(.~Home_Salinity) +
-  theme(strip.text.x = element_text(size = 16, color = "black", face = "bold")) +
-  theme(strip.background = element_rect(color="black", size=1.2, linetype="solid"))
-
-print(totalN)
-
-totalC <- ggplot() + geom_point(data = sal_con, aes(x = TotalC, y = Depth, color = Home_Salinity), size = 3) +
-  scale_y_reverse() + 
-  scale_color_manual(values = sal_colors, labels = c("Low Salinity", "Mid", "High")) +
-  ylab(bquote('Depth (cm)')) +
-  xlab(bquote('Total Carbon (%)')) +
-  geom_line(data = mean_con, aes(x = TotalC, y = Depth, color = Home_Salinity), size = 1.2) +
-  theme(axis.text=element_text(size=9),axis.title=element_text(size=18,face="bold"), legend.position = "none") +
-  facet_grid(.~Home_Salinity) +
-  theme(strip.text.x = element_text(size = 16, color = "black", face = "bold")) +
-  theme(strip.background = element_rect(color="black", size=1.2, linetype="solid"))
-
-print(totalC)
-
-pH <- ggplot() + geom_point(data = sal_con, aes(x = pH, y = Depth, color = Home_Salinity), size = 3) +
-  scale_y_reverse() + 
-  scale_color_manual(values = sal_colors, labels = c("Low Salinity", "Mid", "High")) +
-  ylab(bquote('Depth (cm)')) +
-  xlab(bquote('pH')) +
-  geom_line(data = mean_con, aes(x = pH, y = Depth, color = Home_Salinity), size = 1.2) +
-  theme(axis.text=element_text(size=9),axis.title=element_text(size=18,face="bold"), legend.position = "none") +
-  facet_grid(.~Home_Salinity) +
-  theme(strip.text.x = element_text(size = 16, color = "black", face = "bold")) +
-  theme(strip.background = element_rect(color="black", size=1.2, linetype="solid"))
-
-print(pH)
-
-BaseSat <- ggplot() + geom_point(data = sal_con, aes(x = BaseSat, y = Depth, color = Home_Salinity), size = 3) +
-  scale_y_reverse() + 
-  scale_color_manual(values = sal_colors, labels = c("Low Salinity", "Mid", "High")) +
-  ylab(bquote('Depth (cm)')) +
-  xlab(bquote('Base Saturation (%)')) +
-  geom_line(data = mean_con, aes(x = BaseSat, y = Depth, color = Home_Salinity), size = 1.2) +
-  theme(axis.text=element_text(size=9),axis.title=element_text(size=18,face="bold"), legend.position = "none") +
-  facet_grid(.~Home_Salinity) +
-  theme(strip.text.x = element_text(size = 16, color = "black", face = "bold")) +
-  theme(strip.background = element_rect(color="black", size=1.2, linetype="solid"))
-
-print(BaseSat)
-
-CEC <- ggplot() + geom_point(data = sal_con, aes(x = CEC, y = Depth, color = Home_Salinity), size = 3) +
-  scale_y_reverse() + 
-  scale_color_manual(values = sal_colors, labels = c("Low Salinity", "Mid", "High")) +
-  ylab(bquote('Depth (cm)')) +
-  xlab(bquote('Cation Exchange Capacity (meq/100 g)')) +
-  geom_line(data = mean_con, aes(x = CEC, y = Depth, color = Home_Salinity), size = 1.2) +
-  theme(axis.text=element_text(size=9),axis.title=element_text(size=18,face="bold"), legend.position = "none") +
-  facet_grid(.~Home_Salinity) +
-  theme(strip.text.x = element_text(size = 16, color = "black", face = "bold")) +
-  theme(strip.background = element_rect(color="black", size=1.2, linetype="solid"))
-
-print(CEC)
-
-Ca <- ggplot() + geom_point(data = sal_con, aes(x = Ca, y = Depth, color = Home_Salinity), size = 3) +
-  scale_y_reverse() + 
-  scale_color_manual(values = sal_colors, labels = c("Low Salinity", "Mid", "High")) +
-  ylab(bquote('Depth (cm)')) +
-  xlab(bquote('Calcium (mg/kg)')) +
-  geom_line(data = mean_con, aes(x = Ca, y = Depth, color = Home_Salinity), size = 1.2) +
-  theme(axis.text=element_text(size=9),axis.title=element_text(size=18,face="bold"), legend.position = "none") +
-  facet_grid(.~Home_Salinity) +
-  theme(strip.text.x = element_text(size = 16, color = "black", face = "bold")) +
-  theme(strip.background = element_rect(color="black", size=1.2, linetype="solid"))
-
-print(Ca)
-
-Fe <- ggplot() + geom_point(data = sal_con, aes(x = Fe, y = Depth, color = Home_Salinity), size = 3) +
-  scale_y_reverse() + 
-  scale_color_manual(values = sal_colors, labels = c("Low Salinity", "Mid", "High")) +
-  ylab(bquote('Depth (cm)')) +
-  xlab(bquote('Iron (mg/kg)')) +
-  geom_line(data = mean_con, aes(x = Fe, y = Depth, color = Home_Salinity), size = 1.2) +
-  theme(axis.text=element_text(size=9),axis.title=element_text(size=18,face="bold"), legend.position = "none") +
-  facet_grid(.~Home_Salinity) +
-  theme(strip.text.x = element_text(size = 16, color = "black", face = "bold")) +
-  theme(strip.background = element_rect(color="black", size=1.2, linetype="solid"))
-
-print(Fe) #need to look into the Fe analysis
-
-K <- ggplot() + geom_point(data = sal_con, aes(x = K, y = Depth, color = Home_Salinity), size = 3) +
-  scale_y_reverse() + 
-  scale_color_manual(values = sal_colors, labels = c("Low Salinity", "Mid", "High")) +
-  ylab(bquote('Depth (cm)')) +
-  xlab(bquote('Potassium (mg/kg)')) +
-  geom_line(data = mean_con, aes(x = K, y = Depth, color = Home_Salinity), size = 1.2) +
-  theme(axis.text=element_text(size=9),axis.title=element_text(size=18,face="bold"), legend.position = "none") +
-  facet_grid(.~Home_Salinity) +
-  theme(strip.text.x = element_text(size = 16, color = "black", face = "bold")) +
-  theme(strip.background = element_rect(color="black", size=1.2, linetype="solid"))
-
-print(K)
-
-Mg <- ggplot() + geom_point(data = sal_con, aes(x = Mg, y = Depth, color = Home_Salinity), size = 3) +
-  scale_y_reverse() + 
-  scale_color_manual(values = sal_colors, labels = c("Low Salinity", "Mid", "High")) +
-  ylab(bquote('Depth (cm)')) +
-  xlab(bquote('Magnesium (mg/kg)')) +
-  geom_line(data = mean_con, aes(x = Mg, y = Depth, color = Home_Salinity), size = 1.2) +
-  theme(axis.text=element_text(size=9),axis.title=element_text(size=18,face="bold"), legend.position = "none") +
-  facet_grid(.~Home_Salinity) +
-  theme(strip.text.x = element_text(size = 16, color = "black", face = "bold")) +
-  theme(strip.background = element_rect(color="black", size=1.2, linetype="solid"))
-
-print(Mg)
-
-Mn <- ggplot() + geom_point(data = sal_con, aes(x = Mn, y = Depth, color = Home_Salinity), size = 3) +
-  scale_y_reverse() + 
-  scale_color_manual(values = sal_colors, labels = c("Low Salinity", "Mid", "High")) +
-  ylab(bquote('Depth (cm)')) +
-  xlab(bquote('Manganese (mg/kg)')) +
-  geom_line(data = mean_con, aes(x = Mn, y = Depth, color = Home_Salinity), size = 1.2) +
-  theme(axis.text=element_text(size=9),axis.title=element_text(size=18,face="bold"), legend.position = "none") +
-  facet_grid(.~Home_Salinity) +
-  theme(strip.text.x = element_text(size = 16, color = "black", face = "bold")) +
-  theme(strip.background = element_rect(color="black", size=1.2, linetype="solid"))
-
-print(Mn)
-
-Na <- ggplot() + geom_point(data = sal_con, aes(x = Na, y = Depth, color = Home_Salinity), size = 3) +
-  scale_y_reverse() + 
-  scale_color_manual(values = sal_colors, labels = c("Low Salinity", "Mid", "High")) +
-  ylab(bquote('Depth (cm)')) +
-  xlab(bquote('Sodium (mg/kg)')) +
-  geom_line(data = mean_con, aes(x = Na, y = Depth, color = Home_Salinity), size = 1.2) +
-  theme(axis.text=element_text(size=9),axis.title=element_text(size=18,face="bold"), legend.position = "none") +
-  facet_grid(.~Home_Salinity) +
-  theme(strip.text.x = element_text(size = 16, color = "black", face = "bold")) +
-  theme(strip.background = element_rect(color="black", size=1.2, linetype="solid"))
-
-print(Na)
-
-Ni <- ggplot() + geom_point(data = sal_con, aes(x = Ni, y = Depth, color = Home_Salinity), size = 3) +
-  scale_y_reverse() + 
-  scale_color_manual(values = sal_colors, labels = c("Low Salinity", "Mid", "High")) +
-  ylab(bquote('Depth (cm)')) +
-  xlab(bquote('Nickel (mg/kg)')) +
-  geom_line(data = mean_con, aes(x = Ni, y = Depth, color = Home_Salinity), size = 1.2) +
-  theme(axis.text=element_text(size=9),axis.title=element_text(size=18,face="bold"), legend.position = "none") +
-  facet_grid(.~Home_Salinity) +
-  theme(strip.text.x = element_text(size = 16, color = "black", face = "bold")) +
-  theme(strip.background = element_rect(color="black", size=1.2, linetype="solid"))
-
-print(Ni)
-
-P <- ggplot() + geom_point(data = sal_con, aes(x = P, y = Depth, color = Home_Salinity), size = 3) +
-  scale_y_reverse() + 
-  scale_color_manual(values = sal_colors, labels = c("Low Salinity", "Mid", "High")) +
-  ylab(bquote('Depth (cm)')) +
-  xlab(bquote('Phosphorus (mg/kg)')) +
-  geom_line(data = mean_con, aes(x = P, y = Depth, color = Home_Salinity), size = 1.2) +
-  theme(axis.text=element_text(size=9),axis.title=element_text(size=18,face="bold"), legend.position = "none") +
-  facet_grid(.~Home_Salinity) +
-  theme(strip.text.x = element_text(size = 16, color = "black", face = "bold")) +
-  theme(strip.background = element_rect(color="black", size=1.2, linetype="solid"))
-
-print(P)
-
-Pb <- ggplot() + geom_point(data = sal_con, aes(x = Pb, y = Depth, color = Home_Salinity), size = 3) +
-  scale_y_reverse() + 
-  scale_color_manual(values = sal_colors, labels = c("Low Salinity", "Mid", "High")) +
-  ylab(bquote('Depth (cm)')) +
-  xlab(bquote('Lead (mg/kg)')) +
-  geom_line(data = mean_con, aes(x = Pb, y = Depth, color = Home_Salinity), size = 1.2) +
-  theme(axis.text=element_text(size=9),axis.title=element_text(size=18,face="bold"), legend.position = "none") +
-  facet_grid(.~Home_Salinity) +
-  theme(strip.text.x = element_text(size = 16, color = "black", face = "bold")) +
-  theme(strip.background = element_rect(color="black", size=1.2, linetype="solid"))
-
-print(Pb)
-
-Zn <- ggplot() + geom_point(data = sal_con, aes(x = Zn, y = Depth, color = Home_Salinity), size = 3) +
-  scale_y_reverse() + 
-  scale_color_manual(values = sal_colors, labels = c("Low Salinity", "Mid", "High")) +
-  ylab(bquote('Depth (cm)')) +
-  xlab(bquote('Zinc (mg/kg)')) +
-  geom_line(data = mean_con, aes(x = Zn, y = Depth, color = Home_Salinity), size = 1.2) +
-  theme(axis.text=element_text(size=9),axis.title=element_text(size=18,face="bold"), legend.position = "none") +
-  facet_grid(.~Home_Salinity) +
-  theme(strip.text.x = element_text(size = 16, color = "black", face = "bold")) +
-  theme(strip.background = element_rect(color="black", size=1.2, linetype="solid"))
-
-print(Zn)
-
-```
-Low Salinity Transplants
-
-```{r data-low salinity transplants}
-
-#Isolating low salinity cores - control and transplant
-sal_low <- subset(phys_data, Transect_Type == "S" & Home_Salinity == "Low")
-sal_low$Local_Salinity <- c("High","High","High","High","High","High","High","High","High","High","High","High","Mid","Mid","Mid","Mid","Mid","Mid","Mid","Mid","Mid","Mid","Mid","Mid","Low","Low","Low","Low","Low","Low","Low","Low","Low","Low","Low","Low")
-
-#Assigning variable levels for graphing purposes.
-sal_low$Local_Salinity = factor(sal_low$Local_Salinity, levels=c("Low", "Mid", "High"))
-
-mean_low <- aggregate(x = sal_low[c("TotalN", "TotalC", "LBC", "LBCeq", "pH", "BaseSat", "CEC", "Ca", "Fe", "K", "Mg", "Mn", "Na", "Ni", "P", "Pb", "Zn")],
-                      by = sal_low[c("Depth", "Local_Salinity", "Treatment")],
-                      FUN = mean)
-
-#Isolating low salinity transplant cores from salinity transect
-sal_lowtrans <- subset(phys_data, Transect_Type == "S" & Treatment == "Transplant" & Home_Salinity == "Low")
-
-#Add a "local salinity" column to group with control data
-sal_lowtrans$Local_Salinity <- sal_lowtrans$Transplant_Salinity
-sal_con$Local_Salinity <- sal_con$Home_Salinity
-
-#Merging dataframes
-sal_lowcon <- rbind(sal_con, sal_lowtrans)
-
-#Calculating mean with site and depth for all variables
-mean_lowtrans <- aggregate(x = sal_lowtrans[c("TotalN", "TotalC", "LBC", "LBCeq", "pH", "BaseSat", "CEC", "Ca", "Fe", "K", "Mg", "Mn", "Na", "Ni", "P", "Pb", "Zn")],
-                      by = sal_lowtrans[c("Home_Salinity", "Depth", "Local_Salinity", "Treatment")],
-                      FUN = mean)
-
-mean_con <- aggregate(x = sal_con[c("TotalN", "TotalC", "LBC", "LBCeq", "pH", "BaseSat", "CEC", "Ca", "Fe", "K", "Mg", "Mn", "Na", "Ni", "P", "Pb", "Zn")],
-                      by = sal_con[c("Home_Salinity", "Depth", "Local_Salinity", "Treatment")],
-                      FUN = mean)
-
-#Mergrin dataframes
-ave_sal_lowcon <- rbind(mean_con, mean_lowtrans)
-
-#Visualizing low salinity transplant physicochemistry by depth and (1) across gradient and (2) at home site
-home_colors <- c("#F48FB1","#E91E63","#880E4F")
-
-#Across the gradient
-lowN_grad <- ggplot() + geom_point(data = sal_lowcon, aes(x = TotalN, y = Depth, color = Home_Salinity, shape = Treatment), size = 3) +
-  scale_y_reverse() +
-  scale_color_manual(values = home_colors, labels = c("Low", "Mid", "High")) +
-  scale_shape_manual(values = c(19, 24)) +
-  ylab(bquote('Depth (cm)')) +
-  xlab(bquote('Total Nitrogen (%)')) +
-  geom_line(data = ave_sal_lowcon, aes(x = TotalN, y = Depth, color = Home_Salinity, linetype = Treatment), size = 1.2) +
-  theme(axis.text=element_text(size=9),axis.title=element_text(size=18,face="bold"), legend.position = "none") +
-  facet_grid(.~Local_Salinity) +
-  theme(strip.text.x = element_text(size = 16, color = "black", face = "bold")) +
-  theme(strip.background = element_rect(color="black", size=1.2, linetype="solid"))
-
-print(lowN_grad)
-
-#At home site
-lowN_site <- ggplot() + geom_point(data = sal_low, aes(x = TotalN, y = Depth, color = Local_Salinity, shape = Treatment), size = 3) +
-  scale_y_reverse() +
-  scale_color_manual(values = home_colors, labels = c("Low", "Mid", "High")) +
-  scale_shape_manual(values = c(19, 24)) +
-  ylab(bquote('Depth (cm)')) +
-  xlab(bquote('Total Nitrogen (%)')) +
-  ggtitle("Low Salinity Site") +
-  geom_line(data = mean_low, aes(x = TotalN, y = Depth, color = Local_Salinity, linetype = Treatment), size = 1.2) +
-  theme(axis.text=element_text(size=9),axis.title=element_text(size=18,face="bold")) +
-  theme(strip.text.x = element_text(size = 16, color = "black", face = "bold")) +
-  theme(strip.background = element_rect(color="black", size=1.2, linetype="solid"))
-
-print(lowN_site)
-
-#Across the gradient
-lowC_grad <- ggplot() + geom_point(data = sal_lowcon, aes(x = TotalC, y = Depth, color = Home_Salinity, shape = Treatment), size = 3) +
-  scale_y_reverse() +
-  scale_color_manual(values = home_colors, labels = c("Low", "Mid", "High")) +
-  scale_shape_manual(values = c(19, 24)) +
-  ylab(bquote('Depth (cm)')) +
-  xlab(bquote('Total Carbon (%)')) +
-  geom_line(data = ave_sal_lowcon, aes(x = TotalC, y = Depth, color = Home_Salinity, linetype = Treatment), size = 1.2) +
-  theme(axis.text=element_text(size=9),axis.title=element_text(size=18,face="bold"), legend.position = "none") +
-  facet_grid(.~Local_Salinity) +
-  theme(strip.text.x = element_text(size = 16, color = "black", face = "bold")) +
-  theme(strip.background = element_rect(color="black", size=1.2, linetype="solid"))
-
-print(lowC_grad)
-
-#At home site
-lowC_site <- ggplot() + geom_point(data = sal_low, aes(x = TotalC, y = Depth, color = Local_Salinity, shape = Treatment), size = 3) +
-  scale_y_reverse() +
-  scale_color_manual(values = home_colors, labels = c("Low", "Mid", "High")) +
-  scale_shape_manual(values = c(19, 24)) +
-  ylab(bquote('Depth (cm)')) +
-  xlab(bquote('Total Carbon (%)')) +
-  ggtitle("Low Salinity Site") +
-  geom_line(data = mean_low, aes(x = TotalC, y = Depth, color = Local_Salinity, linetype = Treatment), size = 1.2) +
-  theme(axis.text=element_text(size=9),axis.title=element_text(size=18,face="bold")) +
-  theme(strip.text.x = element_text(size = 16, color = "black", face = "bold")) +
-  theme(strip.background = element_rect(color="black", size=1.2, linetype="solid"))
-
-print(lowC_site)
 
 
-```
 
