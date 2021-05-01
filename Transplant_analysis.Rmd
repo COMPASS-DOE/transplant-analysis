@@ -20,7 +20,10 @@ library(ggplot2)
 library(tidyverse)
 library(ggpubr)
 library(rstatix)
-library(zoo)
+library(vegan)
+library(permute)
+library(lattice)
+library(nlme)
 theme_set(theme_bw())
 ```
 # JUSTIFICATION:
@@ -31,9 +34,6 @@ theme_set(theme_bw())
 
 # RESEARCH QUESTIONS:
 What are the effects of changing oligohaline seawater exposure on coastal forest soil carbon cycling and underlying chemical drivers in soils with **(A.)** and without **(B.)** seawater and inundation legacies?
-
-A. = proxy for press disturbance, such as sea level rise
-B. = proxy for pulse disturbance, such as extreme storm surge
 
 # HYPOTHESES:
 **(A.)** When soils have a history of exposure to seawater and prolonged inundation, increasing oligohaline seawater exposure will stimulate CO2 flux due to (1) heightened sulfate availability, (2) minimal osmotic stress, (3) higher carbon quality, and (4) greater cation exchange capacity.
@@ -47,27 +47,32 @@ B. = proxy for pulse disturbance, such as extreme storm surge
 * Soil samples (0-5, 5-10, and 10-20 cm) were collected from each soil mesocosm in April 2020 for a suite of soil chemistry analyses.
 
 # RESULTS:
-## Soils with seawater exposure legacy 
 
-```{r variation in site salinity mean and range, eval=FALSE, echo=FALSE}
+#CO2 responses to changing salinity
+## Soils with seawater exposure legacy 
+```{r variation in site salinity mean and range, eval=T, echo=FALSE}
 #Conductivity data from the Soil Transplant and Marsh Organ Experiments were combined to assess site salinity
 
 #Package wql: Exploring Water Quality and Monitoring data and Function ec2pss were used to convert data from 
 #electrical conductivity to ppt
 
 #Values were then exported into Transplant_Salinity.csv
-sal <- read.csv("Transplant_Salinity.csv")
+
+dir <- "./Data/premis-ghg/"
+
+read.csv(file.path(dir, "Transplant_Salinity.csv"),
+         stringsAsFactors = FALSE) -> 
+  sal
 
 sal %>%
   separate(Sampling_Event, into=c("Month", "Day", "Year"), sep = "/") %>%
   unite("Date", Year, Month, Day, sep="-") %>%
-  mutate(Date=as.Date(Date)) %>%
-  mutate(Site = factor(Site, levels=c("NorthFork", "CanoeShed", "GCREW"), labels=c("Low Salinity Site", "Mid Salinity Site", "High Salinity Site"))) %>%
-  #Adding julian day
-  mutate(jday = yday(Date)) ->
+  mutate(Date=as.Date(Date),
+         Site = factor(Site, levels=c("NorthFork", "CanoeShed", "GCREW"), labels=c("Low Salinity Site", "Mid Salinity Site", "High Salinity Site")),
+         jday = yday(Date)) ->
   sal
 
-#Visualizing salinity changes over time using julian days
+#Visualizing salinity changes over time using julian day
 ggplot() +
   geom_point(aes(sal$jday, sal$meanSal, color=sal$Site),size=1.5) +
   xlab("Julian Day") +
@@ -91,7 +96,1479 @@ ggplot() +
   scale_color_manual(values=c("turquoise3","gold2","violetred2"))
 ```
 
+```{r reshaping data set, eval=FALSE, echo=FALSE}
+dir <- "./Data/premis-ghg/"
+
+read.csv(file.path(dir, "transplant_fluxes_2018_2020.csv"),
+         stringsAsFactors = FALSE) -> 
+  flux
+
+flux %>%
+  #Isolating salinity transect
+  filter(Salinity_Transect=="Y",
+  #Isolating transplanted soil cores       
+         Treatment=="Trenched",
+  #Removing error values
+          !CO2_Flux<0) %>%
+  #Re-formatting date
+  separate(Sampling_Event, into = c("Month", "Day", "Year"), sep = "/") %>%
+  unite("Date", Year, Month, Day, sep="-") %>%
+  mutate(Date = as.Date(Date),
+    Year = paste(year(Date)),
+    Month = paste(month(Date)),
+   #Adding growing season
+   Season = case_when(
+    Month %in% c(5,6,7,8,9,10) ~ "Growing",
+    TRUE ~ "Non-Growing"),
+   #Adding water status
+    VWC_Cond = case_when(
+    meanSM >= 0.2 & meanSM <= 0.4 ~ "Optimal",
+    meanSM >= 0 & meanSM <= 0.2 | meanSM >= 0.4 & meanSM <= 0.6 ~ "Stressful",
+    TRUE~"Other"),
+   #Adding mean change in salinity 
+   SalChange = case_when(
+    Collar %in% c(33,34,35,36) ~ "+3",
+    Collar %in% c(29,30,31,32) ~ "+4",
+    Collar %in% c(25,26,27,28,13,14,15,16,1,2,3,4) ~ "0",
+    Collar %in% c(21,22,23,24) ~ "-3",
+    Collar %in% c(17,18,19,20) ~ "+1",
+    Collar %in% c(9,10,11,12) ~ "-4",
+    Collar %in% c(5,6,7,8) ~ "-1"),
+   StudyYear = case_when(
+     year(.$Date) < 2019 | year(.$Date) <= 2019 & month(.$Date) <= 03 ~ "1",
+     TRUE ~ "2"),
+   #Setting factors and levels
+   Home_Salinity = factor(Home_Salinity, levels=c("Low", "Mid", "High"), labels=c("Low Home Salinity", "Mid Home Salinity", "High Home Salinity")),
+    Local_Salinity = factor(Local_Salinity, levels=c("Low", "Mid", "High"), labels=c("Low Local Salinity", "Mid Local Salinity", "High Local Salinity")),
+    Season = factor(Season, levels=c("Non-Growing", "Growing")),
+    SalChange = factor(SalChange, levels=c("-4","-3","-1","0","+1","+3","+4")),
+    VWC_Cond = factor(VWC_Cond, levels=c("Stressful","Optimal")),
+    Collar = factor(Collar)) %>%
+   #2020 timepoints have two fluxes - averaging all fluxes by day
+  group_by(Date, Year, Month, StudyYear, Collar, Home_Salinity, Local_Salinity, Season, SalChange, VWC_Cond) %>%
+  summarise(n = n(),
+            Date=mean(Date),
+            meanCO2=mean(CO2_Flux),
+            CO2SD=mean(CO2_sd),
+            meanCH4=mean(CH4_Flux),
+            meanSM=mean(meanSM),
+            meanT5=mean(meanT5),
+            meanT20=mean(meanT20)) ->
+  flux2
+```
+
+```{r changing salinity and carbon dioxide flux - statistics, eval=T, echo=FALSE}
+#Primarily interested in if salinity effect depends on other ecological variables of known importance for soil carbon fluxes
+
+#Dependent variable = CO2 flux
+#Independent variables = Local Salinity and how it's effects vary with study year, temperature, and growing season and soil water statuses
+#Random variable/repeated = Collar
+
+#Assessing violations to linear model assumptions
+
+#Normal distribution
+hist(flux2$meanCO2) #positively skewed distribution
+hist(log(flux2$meanCO2)) #log transformation looks great
+
+flux2$logCO2 <- log(flux2$meanCO2)
+
+#Equal variance across groups - ok if largest-to-smallest variance ratio < 3:1
+var<-tapply(flux2$meanCO2, flux2$Local_Salinity, var)
+var #looks good - largest-to-smallest variance ratio = ~2:1
+
+#observations in a group are independent - yes
+
+#Proceeding with mixed effects model using log-transformed CO2 flux
+
+#Does salinity response vary with study year
+co2 <- lme(logCO2~Local_Salinity*StudyYear, data=flux2, random=~1|Collar)
+summary(co2)
+
+anova_co2<-Anova(co2)
+
+anova_co2 #Local Salinity p=0.071; StudyYear p<1e-11; LSxY p=0.18
+
+#Does salinity response vary with temperature
+co2 <- lme(logCO2~Local_Salinity*meanT5, data=flux2, random=~1|Collar)
+summary(co2)
+
+anova_co2<-Anova(co2)
+
+anova_co2 #Local Salinity p=0.15; Temp: p<2e-16; LSxT p=0.60
+
+#Does salinity response vary with growing season
+co2 <- lme(logCO2~Local_Salinity*Season, data=flux2, random=~1|Collar)
+summary(co2)
+
+anova_co2<-Anova(co2)
+
+anova_co2 #Local Salinity p=0.09; Season: p<2e-16; LSxS p=0.048
+
+#Does salinity response vary with soil water status
+flux2 %>%
+  filter(!is.na(VWC_Cond)) ->
+  flux3
+co2 <- lme(logCO2~Local_Salinity*VWC_Cond, data=flux3, random=~1|Collar)
+summary(co2)
+
+anova_co2<-Anova(co2)
+
+anova_co2 #Local Salinity p=0.16; Water: p<4e-10; LSxW p=0.18
+```
+
+```{r changing salinity and CO2 flux under optimal water status, separated by year and growing season}
+#YEAR 1, OPTIMAL WATER, NON-GROWING SEASON
+flux2 %>%
+  filter(StudyYear==1,
+         VWC_Cond=="Optimal",
+         Season=="Non-Growing",
+         !Local_Salinity=="High Local Salinity") ->
+  df1
+
+aov1 <- aov(logCO2~Local_Salinity + Error(Collar), data=df1)
+summary(aov1)#Year 1, OPT, N-GS, Low-to-Mid, p=0.0.10
+
+flux2 %>%
+ filter(StudyYear==1,
+         VWC_Cond=="Optimal",
+         Season=="Non-Growing",
+        !Local_Salinity=="Mid Local Salinity") ->
+  df2
+
+aov2 <- aov(logCO2~Local_Salinity + Error(Collar), data=df2)
+summary(aov2)#Year 1, OPT, N-GS, Low-to-High, p=0.14
+
+flux2 %>%
+  filter(StudyYear==1,
+         VWC_Cond=="Optimal",
+         Season=="Non-Growing",
+         !Local_Salinity=="Low Local Salinity") ->
+  df3
+
+aov3 <- aov(logCO2~Local_Salinity + Error(Collar), data=df3)
+summary(aov3)#Year 1, OPT, N-GS, Mid-to-High, p=0.99
 
 
+#YEAR 1, OPTIMAL WATER, GROWING SEASON
+flux2 %>%
+  filter(StudyYear==1,
+         VWC_Cond=="Optimal",
+         Season=="Growing",
+         !Local_Salinity=="High Local Salinity") ->
+  df1
+
+aov1 <- aov(logCO2~Local_Salinity + Error(Collar), data=df1)
+summary(aov1)#Year 1, OPT, GS, Low-to-Mid, p=0.0.37
+
+flux2 %>%
+ filter(StudyYear==1,
+         VWC_Cond=="Optimal",
+         Season=="Growing",
+        !Local_Salinity=="Mid Local Salinity") ->
+  df2
+
+aov2 <- aov(logCO2~Local_Salinity + Error(Collar), data=df2)
+summary(aov2)#Year 1, OPT, GS, Low-to-High, p=0.08
+
+flux2 %>%
+  filter(StudyYear==1,
+         VWC_Cond=="Optimal",
+         Season=="Growing",
+         !Local_Salinity=="Low Local Salinity") ->
+  df3
+
+aov3 <- aov(logCO2~Local_Salinity + Error(Collar), data=df3)
+summary(aov3)#Year 1, OPT, N-GS, Mid-to-High, p=0.43
+
+#YEAR 2, OPTIMAL WATER, NON-GROWING SEASON
+flux2 %>%
+  filter(StudyYear==2,
+         VWC_Cond=="Optimal",
+         Season=="Non-Growing",
+         !Local_Salinity=="High Local Salinity") ->
+  df1
+
+aov1 <- aov(logCO2~Local_Salinity + Error(Collar), data=df1)
+summary(aov1)#Year 2, OPT, N-GS, Low-to-Mid, p=0.0.21
+
+flux2 %>%
+ filter(StudyYear==2,
+         VWC_Cond=="Optimal",
+         Season=="Non-Growing",
+        !Local_Salinity=="Mid Local Salinity") ->
+  df2
+
+aov2 <- aov(logCO2~Local_Salinity + Error(Collar), data=df2)
+summary(aov2)#Year 2, OPT, N-GS, Low-to-High, p=0.01
+
+flux2 %>%
+  filter(StudyYear==2,
+         VWC_Cond=="Optimal",
+         Season=="Non-Growing",
+         !Local_Salinity=="Low Local Salinity") ->
+  df3
+
+aov3 <- aov(logCO2~Local_Salinity + Error(Collar), data=df3)
+summary(aov3)#Year 2, OPT, N-GS, Mid-to-High, p=0.04
+
+#YEAR 2, OPTIMAL WATER, GROWING SEASON
+flux2 %>%
+  filter(StudyYear==2,
+         VWC_Cond=="Optimal",
+         Season=="Growing",
+         !Local_Salinity=="High Local Salinity") ->
+  df1
+
+aov1 <- aov(logCO2~Local_Salinity + Error(Collar), data=df1)
+summary(aov1)#Year 2, OPT, GS, Low-to-Mid, p=0.0.03
+
+flux2 %>%
+ filter(StudyYear==2,
+         VWC_Cond=="Optimal",
+         Season=="Growing",
+        !Local_Salinity=="Mid Local Salinity") ->
+  df2
+
+aov2 <- aov(logCO2~Local_Salinity + Error(Collar), data=df2)
+summary(aov2)#Year 2, OPT, GS, Low-to-High, p=0.008
+
+flux2 %>%
+  filter(StudyYear==2,
+         VWC_Cond=="Optimal",
+         Season=="Growing",
+         !Local_Salinity=="Low Local Salinity") ->
+  df3
+
+aov3 <- aov(logCO2~Local_Salinity + Error(Collar), data=df3)
+summary(aov3)#Year 2, OPT, GS, Mid-to-High, p=0.42
+```
+
+```{r changing salinity and CO2 flux under stressful water status, separated by year and growing season}
+#YEAR 1, STRESSFUL WATER, NON-GROWING SEASON
+flux2 %>%
+  filter(StudyYear==1,
+         VWC_Cond=="Stressful",
+         Season=="Non-Growing",
+         !Local_Salinity=="High Local Salinity") ->
+  df1
+
+aov1 <- aov(logCO2~Local_Salinity + Error(Collar), data=df1)
+summary(aov1)#Year 1, STR, N-GS, Low-to-Mid, p=0.0.25
+
+flux2 %>%
+ filter(StudyYear==1,
+         VWC_Cond=="Stressful",
+         Season=="Non-Growing",
+        !Local_Salinity=="Mid Local Salinity") ->
+  df2
+
+aov2 <- aov(logCO2~Local_Salinity + Error(Collar), data=df2)
+summary(aov2)#Year 1, STR, N-GS, Low-to-High, p=0.29
+
+flux2 %>%
+  filter(StudyYear==1,
+         VWC_Cond=="Stressful",
+         Season=="Non-Growing",
+         !Local_Salinity=="Low Local Salinity") ->
+  df3
+
+aov3 <- aov(logCO2~Local_Salinity + Error(Collar), data=df3)
+summary(aov3)#Year 1, STR, N-GS, Mid-to-High, p=0.05
 
 
+#YEAR 1, STRESSFUL WATER, GROWING SEASON
+flux2 %>%
+  filter(StudyYear==1,
+         VWC_Cond=="Stressful",
+         Season=="Growing",
+         !Local_Salinity=="High Local Salinity") ->
+  df1
+
+aov1 <- aov(logCO2~Local_Salinity + Error(Collar), data=df1)
+summary(aov1)#Year 1, STR, GS, Low-to-Mid, p=0.0.12
+
+flux2 %>%
+ filter(StudyYear==1,
+         VWC_Cond=="Stressful",
+         Season=="Growing",
+        !Local_Salinity=="Mid Local Salinity") ->
+  df2
+
+aov2 <- aov(logCO2~Local_Salinity + Error(Collar), data=df2)
+summary(aov2)#Year 1, STR, GS, Low-to-High, p=0.03
+
+flux2 %>%
+  filter(StudyYear==1,
+         VWC_Cond=="Stressful",
+         Season=="Growing",
+         !Local_Salinity=="Low Local Salinity") ->
+  df3
+
+aov3 <- aov(logCO2~Local_Salinity + Error(Collar), data=df3)
+summary(aov3)#Year 1, STR, N-GS, Mid-to-High, p=0.79
+
+#YEAR 2, STRESSFUL WATER, NON-GROWING SEASON
+flux2 %>%
+  filter(StudyYear==2,
+         VWC_Cond=="Stressful",
+         Season=="Non-Growing",
+         !Local_Salinity=="High Local Salinity") ->
+  df1
+
+aov1 <- aov(logCO2~Local_Salinity + Error(Collar), data=df1)
+summary(aov1)#Year 2, STR, N-GS, Low-to-Mid, p=0.0.02
+
+flux2 %>%
+ filter(StudyYear==2,
+         VWC_Cond=="Stressful",
+         Season=="Non-Growing",
+        !Local_Salinity=="Mid Local Salinity") ->
+  df2
+
+aov2 <- aov(logCO2~Local_Salinity + Error(Collar), data=df2)
+summary(aov2)#Year 2, STR, N-GS, Low-to-High, p=0.25
+
+flux2 %>%
+  filter(StudyYear==2,
+         VWC_Cond=="Stressful",
+         Season=="Non-Growing",
+         !Local_Salinity=="Low Local Salinity") ->
+  df3
+
+aov3 <- aov(logCO2~Local_Salinity + Error(Collar), data=df3)
+summary(aov3)#Year 2, STR, N-GS, Mid-to-High, p=0.30
+
+#YEAR 2, STRESSFUL WATER, GROWING SEASON
+flux2 %>%
+  filter(StudyYear==2,
+         VWC_Cond=="Stressful",
+         Season=="Growing",
+         !Local_Salinity=="High Local Salinity") ->
+  df1
+
+aov1 <- aov(logCO2~Local_Salinity + Error(Collar), data=df1)
+summary(aov1)#Year 2, STR, GS, Low-to-Mid, p=0.0.21
+
+flux2 %>%
+ filter(StudyYear==2,
+         VWC_Cond=="Stressful",
+         Season=="Growing",
+        !Local_Salinity=="Mid Local Salinity") ->
+  df2
+
+aov2 <- aov(logCO2~Local_Salinity + Error(Collar), data=df2)
+summary(aov2)#Year 2, STR, GS, Low-to-High, p=0.70
+
+flux2 %>%
+  filter(StudyYear==2,
+         VWC_Cond=="Stressful",
+         Season=="Growing",
+         !Local_Salinity=="Low Local Salinity") ->
+  df3
+
+aov3 <- aov(logCO2~Local_Salinity + Error(Collar), data=df3)
+summary(aov3)#Year 2, STR, GS, Mid-to-High, p=0.34
+```
+
+```{r figures - changing salinity and CO2 flux under optimal and stressful soil water, log-transformed}
+
+flux2 %>%
+  filter(StudyYear==1,
+         VWC_Cond=="Optimal") %>%
+  ggplot() +
+  geom_boxplot(aes(Season, logCO2, fill=Local_Salinity, color=Local_Salinity),size=1.1) +
+  scale_color_manual(values=c("turquoise3","gold2","violetred2")) +
+  scale_fill_manual(values=c("paleturquoise1", "lightgoldenrod1", "plum1")) +
+  theme(axis.text.x = element_text(face = "bold", size = 14),
+        axis.text.y = element_text(size = 12),
+        axis.title = element_text(face = "bold", size = 12),
+        legend.position = "top",
+        legend.title = element_blank()) +
+  ylab(expression(Log~Flux~(µmol~CO[2]~m^-2~s^-1))) +
+  xlab("") +
+  ylim(-1.5,4) ->
+  CO2_p1
+
+print(CO2_p1)
+
+flux2 %>%
+  filter(StudyYear==2,
+         VWC_Cond=="Optimal") %>%
+  ggplot() +
+  geom_boxplot(aes(Season, logCO2, fill=Local_Salinity, color=Local_Salinity),size=1.1) +
+  scale_color_manual(values=c("turquoise3","gold2","violetred2")) +
+  scale_fill_manual(values=c("paleturquoise1", "lightgoldenrod1", "plum1")) +
+  theme(axis.text.x = element_text(face = "bold", size = 14),
+        axis.text.y = element_text(size = 12),
+        axis.title = element_text(face = "bold", size = 12),
+        legend.position = "top",
+        legend.title = element_blank()) +
+  ylab(expression(Log~Flux~(µmol~CO[2]~m^-2~s^-1))) +
+  xlab("") +
+  ylim(-1.5,4)->
+  CO2_p2
+
+print(CO2_p2)
+
+flux2 %>%
+  filter(StudyYear==1,
+         VWC_Cond=="Stressful") %>%
+  ggplot() +
+  geom_boxplot(aes(Season, logCO2, fill=Local_Salinity, color=Local_Salinity),size=1.1) +
+  scale_color_manual(values=c("turquoise3","gold2","violetred2")) +
+  scale_fill_manual(values=c("paleturquoise1", "lightgoldenrod1", "plum1")) +
+  theme(axis.text.x = element_text(face = "bold", size = 14),
+        axis.text.y = element_text(size = 12),
+        axis.title = element_text(face = "bold", size = 12),
+        legend.position = "top",
+        legend.title = element_blank()) +
+  ylab(expression(Log~Flux~(µmol~CO[2]~m^-2~s^-1))) +
+  xlab("") +
+  ylim(-1.5,4) ->
+  CO2_p3
+
+print(CO2_p3)
+
+flux2 %>%
+  filter(StudyYear==2,
+         VWC_Cond=="Stressful") %>%
+  ggplot() +
+  geom_boxplot(aes(Season, logCO2, fill=Local_Salinity, color=Local_Salinity),size=1.1) +
+  scale_color_manual(values=c("turquoise3","gold2","violetred2")) +
+  scale_fill_manual(values=c("paleturquoise1", "lightgoldenrod1", "plum1")) +
+  theme(axis.text.x = element_text(face = "bold", size = 14),
+        axis.text.y = element_text(size = 12),
+        axis.title = element_text(face = "bold", size = 12),
+        legend.position = "top",
+        legend.title = element_blank()) +
+  ylab(expression(Log~Flux~(µmol~CO[2]~m^-2~s^-1))) +
+  xlab("") +
+  ylim(-1.5,4) ->
+  CO2_p4
+
+print(CO2_p4)
+
+ggarrange(CO2_p1, CO2_p2, CO2_p3, CO2_p4, ncol=2, nrow=2, common.legend=T, labels="auto")
+```
+
+```{r summary stats}
+flux2 %>%
+  filter(VWC_Cond=="Optimal") %>%
+  group_by(StudyYear,Season,Local_Salinity) %>%
+  get_summary_stats(meanCO2, type="mean_sd")
+```
+
+## Soils without seawater exposure legacy 
+```{r reshaping data set, eval=FALSE, echo=FALSE}
+dir <- "./Data/premis-ghg/"
+
+read.csv(file.path(dir, "transplant_fluxes_2018_2020.csv"),
+         stringsAsFactors = FALSE) -> 
+  flux
+
+flux %>%
+  #Isolating elevation transect
+  filter(Elevation_Transect=="Y",
+  #Isolating transplanted soil cores       
+         Treatment=="Trenched",
+  #Removing error values
+          !CO2_Flux<0) %>%
+  #Re-formatting date
+  separate(Sampling_Event, into = c("Month", "Day", "Year"), sep = "/") %>%
+  unite("Date", Year, Month, Day, sep="-") %>%
+  mutate(Date = as.Date(Date),
+    Year = paste(year(Date)),
+    Month = paste(month(Date)),
+   #Adding growing season
+   Season = case_when(
+    Month %in% c(5,6,7,8,9,10) ~ "Growing",
+    TRUE ~ "Non-Growing"),
+   #Adding water status
+    VWC_Cond = case_when(
+    meanSM >= 0.2 & meanSM <= 0.4 ~ "Optimal",
+    meanSM >= 0 & meanSM <= 0.2 | meanSM >= 0.4 & meanSM <= 0.6 ~ "Stressful",
+    TRUE~"Other"),
+   #Adding mean change in salinity 
+   SalChange = case_when(
+    Collar %in% c(49,50,51,52) ~ "+4",
+    Collar %in% c(45,46,47,48,1,2,3,4) ~ "0",
+    Collar %in% c(37,38,39,40) ~ "-4"),
+   StudyYear = case_when(
+     year(.$Date) < 2019 | year(.$Date) <= 2019 & month(.$Date) <= 03 ~ "1",
+     TRUE ~ "2"),
+   #Setting factors and levels
+   Home_Elevation = factor(Home_Elevation, levels=c("Low", "Mid"), labels=c("Down Slope Home", "Up Slope Home")),
+    Local_Elevation = factor(Local_Elevation, levels=c("Low", "Mid"), labels=c("Down Slope Local", "Up Slope Local")),
+    Season = factor(Season, levels=c("Non-Growing", "Growing")),
+    SalChange = factor(SalChange, levels=c("-4","0","+4")),
+    VWC_Cond = factor(VWC_Cond, levels=c("Stressful","Optimal")),
+    Collar = factor(Collar)) %>%
+   #2020 timepoints have two fluxes - averaging all fluxes by day
+  group_by(Date, Year, Month, StudyYear, Collar, Home_Elevation, Local_Elevation, Season, SalChange, VWC_Cond) %>%
+  summarise(n = n(),
+            Date=mean(Date),
+            meanCO2=mean(CO2_Flux),
+            CO2SD=mean(CO2_sd),
+            meanCH4=mean(CH4_Flux),
+            meanSM=mean(meanSM),
+            meanT5=mean(meanT5),
+            meanT20=mean(meanT20)) ->
+  flux2
+
+flux2 %>%
+  mutate(Home_Salinity = case_when(
+    Home_Elevation=="Down Slope Home" ~ "High Home Salinity",
+    Home_Elevation=="Up Slope Home" ~ "No Home Salinity"),
+    Local_Salinity = case_when(
+      Local_Elevation=="Down Slope Local" ~ "High Local Salinity",
+      Local_Elevation=="Up Slope Local" ~ "No Local Salinity"),
+    Local_Salinity = factor(Local_Salinity, levels=c("No Local Salinity", "High Local Salinity")),
+    Home_Salinity = factor(Home_Salinity, levels=c("No Home Salinity", "High Home Salinity")))->
+  flux2
+```
+
+```{r changing salinity and carbon dioxide flux - statistics, eval=T, echo=FALSE}
+#Primarily interested in if salinity effect depends on other ecological variables of known importance for soil carbon fluxes
+
+#Dependent variable = CO2 flux
+#Independent variables = Local Salinity and how it's effects vary with study year, temperature, and growing season and soil water statuses
+#Random variable/repeated = Collar
+
+#Assessing violations to linear model assumptions
+
+#Normal distribution
+hist(flux2$meanCO2) #positively skewed distribution
+hist(log(flux2$meanCO2)) #log transformation looks great
+
+flux2$logCO2 <- log(flux2$meanCO2)
+
+#Equal variance across groups - ok if largest-to-smallest variance ratio < 3:1
+var<-tapply(flux2$meanCO2, flux2$Local_Salinity, var)
+var #looks good - largest-to-smallest variance ratio = ~2:1
+
+#observations in a group are independent - yes
+
+#Proceeding with mixed effects model using log-transformed CO2 flux
+
+#Does salinity response vary with study year
+co2 <- lme(logCO2~Local_Salinity*StudyYear, data=flux2, random=~1|Collar)
+summary(co2)
+
+anova_co2<-Anova(co2)
+
+anova_co2 #Local Salinity p=0.12; StudyYear p=0.01; LSxY p=0.68
+
+#Does salinity response vary with temperature
+co2 <- lme(logCO2~Local_Salinity*meanT5, data=flux2, random=~1|Collar)
+summary(co2)
+
+anova_co2<-Anova(co2)
+
+anova_co2 #Local Salinity p=0.15; Temp: p<2e-16; LSxT p=0.35
+
+#Does salinity response vary with growing season
+co2 <- lme(logCO2~Local_Salinity*Season, data=flux2, random=~1|Collar)
+summary(co2)
+
+anova_co2<-Anova(co2)
+
+anova_co2 #Local Salinity p=0.15; Season: p<2e-16; LSxS p=0.32
+
+#Does salinity response vary with soil water status
+flux2 %>%
+  filter(!is.na(VWC_Cond)) ->
+  flux3
+co2 <- lme(logCO2~Local_Salinity*VWC_Cond, data=flux3, random=~1|Collar)
+summary(co2)
+
+anova_co2<-Anova(co2)
+
+anova_co2 #Local Salinity p=0.26; Water: p=0.0006; LSxW p=0.17
+```
+
+```{r changing salinity and CO2 flux under optimal water status, separated by year and growing season}
+#Only soil water status affected the salinity response. Separating by water status and assessing salinity response.
+
+#OPTIMAL WATER
+flux3 %>%
+  filter(VWC_Cond=="Optimal") ->
+  df1
+
+aov1 <- aov(logCO2~Local_Salinity + Error(Collar), data=df1)
+summary(aov1)#OPT, p=0.05
+
+flux3 %>%
+  filter(VWC_Cond=="Stressful") ->
+  df2
+
+aov1 <- aov(logCO2~Local_Salinity + Error(Collar), data=df2)
+summary(aov1)#STR, p=0.16
+
+flux3%>%
+  group_by(VWC_Cond,Local_Salinity) %>%
+  get_summary_stats(meanCO2, type="mean_sd")
+```
+
+```{r figures - changing salinity and CO2 flux under optimal and stressful soil water, log-transformed}
+flux3 %>%
+  ggplot() +
+  geom_boxplot(aes(VWC_Cond, logCO2, fill=Local_Salinity, color=Local_Salinity),size=1.1) +
+  scale_color_manual(values=c("seagreen4", "violetred2")) +
+  scale_fill_manual(values=c("seagreen1", "plum1")) +
+  theme(axis.text.x = element_text(size = 12),
+        axis.text.y = element_text(size = 12),
+        axis.title = element_text(face = "bold", size = 14),
+        legend.position = "top",
+        legend.title = element_blank()) +
+  ylab(expression(Log~Flux~(µmol~CO[2]~m^-2~s^-1))) +
+  xlab("Water Status") +
+  ylim(-1.5,4)->
+  CO2_p1
+
+print(CO2_p1)
+```
+
+#Adaptation, resistance, or resilience to changing salinity?
+## Soils with seawater exposure legacy 
+
+```{r reshaping data set, eval=FALSE, echo=FALSE}
+dir <- "./Data/premis-ghg/"
+
+read.csv(file.path(dir, "transplant_fluxes_2018_2020.csv"),
+         stringsAsFactors = FALSE) -> 
+  flux
+
+flux %>%
+  #Isolating salinity transect
+  filter(Salinity_Transect=="Y",
+  #Isolating transplanted soil cores       
+         Treatment=="Trenched",
+  #Removing error values
+          !CO2_Flux<0) %>%
+  #Re-formatting date
+  separate(Sampling_Event, into = c("Month", "Day", "Year"), sep = "/") %>%
+  unite("Date", Year, Month, Day, sep="-") %>%
+  mutate(Date = as.Date(Date),
+    Year = paste(year(Date)),
+    Month = paste(month(Date)),
+   #Adding growing season
+   Season = case_when(
+    Month %in% c(5,6,7,8,9,10) ~ "Growing",
+    TRUE ~ "Non-Growing"),
+   #Adding water status
+    VWC_Cond = case_when(
+    meanSM >= 0.2 & meanSM <= 0.4 ~ "Optimal",
+    meanSM >= 0 & meanSM <= 0.2 | meanSM >= 0.4 & meanSM <= 0.6 ~ "Stressful",
+    TRUE~"Other"),
+   #Adding mean change in salinity 
+   SalChange = case_when(
+    Collar %in% c(33,34,35,36) ~ "+3",
+    Collar %in% c(29,30,31,32) ~ "+4",
+    Collar %in% c(25,26,27,28,13,14,15,16,1,2,3,4) ~ "0",
+    Collar %in% c(21,22,23,24) ~ "-3",
+    Collar %in% c(17,18,19,20) ~ "+1",
+    Collar %in% c(9,10,11,12) ~ "-4",
+    Collar %in% c(5,6,7,8) ~ "-1"),
+   StudyYear = case_when(
+     year(.$Date) < 2019 | year(.$Date) <= 2019 & month(.$Date) <= 03 ~ "1",
+     TRUE ~ "2"),
+   #Setting factors and levels
+   Home_Salinity = factor(Home_Salinity, levels=c("Low", "Mid", "High"), labels=c("Low Home Salinity", "Mid Home Salinity", "High Home Salinity")),
+    Local_Salinity = factor(Local_Salinity, levels=c("Low", "Mid", "High"), labels=c("Low Local Salinity", "Mid Local Salinity", "High Local Salinity")),
+    Season = factor(Season, levels=c("Non-Growing", "Growing")),
+    SalChange = factor(SalChange, levels=c("-4","-3","-1","0","+1","+3","+4")),
+    VWC_Cond = factor(VWC_Cond, levels=c("Stressful","Optimal")),
+    Collar = factor(Collar)) %>%
+   #2020 timepoints have two fluxes - averaging all fluxes by day
+  group_by(Date, Year, Month, StudyYear, Collar, Home_Salinity, Local_Salinity, Season, SalChange, VWC_Cond) %>%
+  summarise(n = n(),
+            Date=mean(Date),
+            meanCO2=mean(CO2_Flux),
+            CO2SD=mean(CO2_sd),
+            meanCH4=mean(CH4_Flux),
+            meanSM=mean(meanSM),
+            meanT5=mean(meanT5),
+            meanT20=mean(meanT20)) ->
+  flux2
+
+flux2$logCO2 <- log(flux2$meanCO2)
+```
+
+```{r stats - changing salinity effects within HOME site}
+
+#How does changing salinity effect CO2 flux within home site
+
+#High salinity home site - using optimal soil water and growing season
+
+flux2 %>%
+  filter(StudyYear=="1",
+         Home_Salinity=="High Home Salinity",
+         VWC_Cond=="Optimal",
+         Season=="Growing") ->
+  df1
+
+aov1 <- aov(logCO2~SalChange, data=df1)
+summary(aov1)#p=0.0.08
+
+tukey.test <- TukeyHSD(aov1)
+tukey.test
+#-1 to -4 p=0.007
+#0 to -4 p=0.01
+#0 to -1 p=0.84
+
+flux2 %>%
+  filter(StudyYear=="2",
+         Home_Salinity=="High Home Salinity",
+         VWC_Cond=="Optimal",
+         Season=="Growing") ->
+  df1
+
+aov1 <- aov(logCO2~SalChange, data=df1)
+summary(aov1)#p=0.0.04
+
+tukey.test <- TukeyHSD(aov1)
+tukey.test
+#-1 to -4 p=0.15
+#0 to -4 p=0.03
+#0 to -1 p=0.44
+
+#Mid salinity site - using optimal soil water and growing season
+
+flux2 %>%
+  filter(StudyYear=="1",
+         Home_Salinity=="Mid Home Salinity",
+         VWC_Cond=="Optimal",
+         Season=="Growing") ->
+  df1
+
+aov1 <- aov(logCO2~SalChange, data=df1)
+summary(aov1)#p=0.22
+
+flux2 %>%
+  filter(StudyYear=="2",
+         Home_Salinity=="Mid Home Salinity",
+         VWC_Cond=="Optimal",
+         Season=="Growing") ->
+  df1
+
+aov1 <- aov(logCO2~SalChange, data=df1)
+summary(aov1)#p=0.81
+
+#Low salinity site - using optimal soil water and growing season
+
+flux2 %>%
+  filter(StudyYear=="1",
+         Home_Salinity=="Low Home Salinity",
+         VWC_Cond=="Optimal",
+         Season=="Growing") ->
+  df1
+
+aov1 <- aov(logCO2~SalChange, data=df1)
+summary(aov1)#p=0.43
+
+flux2 %>%
+  filter(StudyYear=="2",
+         Home_Salinity=="Low Home Salinity",
+         VWC_Cond=="Optimal",
+         Season=="Growing") ->
+  df1
+
+aov1 <- aov(logCO2~SalChange, data=df1)
+summary(aov1)#p=0.005
+
+tukey.test <- TukeyHSD(aov1)
+tukey.test
+#+3 to 0 p=0.004
+#+4 to 0 p=0.04
+#+4 to +3 p=0.84
+```
+
+
+```{r figures - changing salinity effects within HOME site}
+
+flux2 %>%
+  filter(StudyYear==1,
+  VWC_Cond=="Optimal",
+  Season=="Growing",
+  Home_Salinity=="High Home Salinity") %>%
+  ggplot() +
+  geom_boxplot(aes(SalChange, logCO2, fill=Home_Salinity, color=Home_Salinity),size=1.1) +
+  scale_color_manual(values=c("violetred2")) +
+  scale_fill_manual(values=c("plum1")) +
+  theme(axis.text.x = element_text(size = 12),
+        axis.text.y = element_text(size = 12),
+        axis.title = element_text(face = "bold", size = 14),
+        legend.position = "top",
+        legend.title = element_blank()) +
+  ylab(expression(Log~Flux~(µmol~CO[2]~m^-2~s^-1))) +
+  xlab("Salinity Change (ppt)") +
+  ylim(0,4)->
+  CO2_p1
+
+print(CO2_p1)
+
+flux2 %>%
+  filter(StudyYear==2,
+  VWC_Cond=="Optimal",
+  Season=="Growing",
+  Home_Salinity=="High Home Salinity") %>%
+  ggplot() +
+  geom_boxplot(aes(SalChange, logCO2, fill=Home_Salinity, color=Home_Salinity),size=1.1) +
+  scale_color_manual(values=c("violetred2")) +
+  scale_fill_manual(values=c("plum1")) +
+  theme(axis.text.x = element_text(size = 12),
+        axis.text.y = element_text(size = 12),
+        axis.title = element_text(face = "bold", size = 14),
+        legend.position = "top",
+        legend.title = element_blank()) +
+  ylab(expression(Log~Flux~(µmol~CO[2]~m^-2~s^-1))) +
+  xlab("Salinity Change (ppt)") +
+  ylim(0,4)->
+  CO2_p2
+
+print(CO2_p2)
+
+flux2 %>%
+  filter(StudyYear==1,
+  VWC_Cond=="Optimal",
+  Season=="Growing",
+  Home_Salinity=="Mid Home Salinity") %>%
+  ggplot() +
+  geom_boxplot(aes(SalChange, logCO2, fill=Home_Salinity, color=Home_Salinity),size=1.1) +
+  scale_color_manual(values=c("gold2")) +
+  scale_fill_manual(values=c("lightgoldenrod1")) +
+  theme(axis.text.x = element_text(size = 12),
+        axis.text.y = element_text(size = 12),
+        axis.title = element_text(face = "bold", size = 14),
+        legend.position = "top",
+        legend.title = element_blank()) +
+  ylab(expression(Log~Flux~(µmol~CO[2]~m^-2~s^-1))) +
+  xlab("Salinity Change (ppt)") +
+  ylim(0,4)->
+  CO2_p3
+
+print(CO2_p3)
+
+flux2 %>%
+  filter(StudyYear==2,
+  VWC_Cond=="Optimal",
+  Season=="Growing",
+  Home_Salinity=="Mid Home Salinity") %>%
+  ggplot() +
+  geom_boxplot(aes(SalChange, logCO2, fill=Home_Salinity, color=Home_Salinity),size=1.1) +
+  scale_color_manual(values=c("gold2")) +
+  scale_fill_manual(values=c("lightgoldenrod1")) +
+  theme(axis.text.x = element_text(size = 12),
+        axis.text.y = element_text(size = 12),
+        axis.title = element_text(face = "bold", size = 14),
+        legend.position = "top",
+        legend.title = element_blank()) +
+  ylab(expression(Log~Flux~(µmol~CO[2]~m^-2~s^-1))) +
+  xlab("Salinity Change (ppt)") +
+  ylim(0,4)->
+  CO2_p4
+
+print(CO2_p4)
+
+flux2 %>%
+  filter(StudyYear==1,
+  VWC_Cond=="Optimal",
+  Season=="Growing",
+  Home_Salinity=="Low Home Salinity") %>%
+  ggplot() +
+  geom_boxplot(aes(SalChange, logCO2, fill=Home_Salinity, color=Home_Salinity),size=1.1) +
+  scale_color_manual(values=c("turquoise3")) +
+  scale_fill_manual(values=c("paleturquoise1")) +
+  theme(axis.text.x = element_text(size = 12),
+        axis.text.y = element_text(size = 12),
+        axis.title = element_text(face = "bold", size = 14),
+        legend.position = "top",
+        legend.title = element_blank()) +
+  ylab(expression(Log~Flux~(µmol~CO[2]~m^-2~s^-1))) +
+  xlab("Salinity Change (ppt)") +
+  ylim(0,4)->
+  CO2_p5
+
+print(CO2_p5)
+
+flux2 %>%
+  filter(StudyYear==2,
+  VWC_Cond=="Optimal",
+  Season=="Growing",
+  Home_Salinity=="Low Home Salinity") %>%
+  ggplot() +
+  geom_boxplot(aes(SalChange, logCO2, fill=Home_Salinity, color=Home_Salinity),size=1.1) +
+  scale_color_manual(values=c("turquoise3")) +
+  scale_fill_manual(values=c("paleturquoise1")) +
+  theme(axis.text.x = element_text(size = 12),
+        axis.text.y = element_text(size = 12),
+        axis.title = element_text(face = "bold", size = 14),
+        legend.position = "top",
+        legend.title = element_blank()) +
+  ylab(expression(Log~Flux~(µmol~CO[2]~m^-2~s^-1))) +
+  xlab("Salinity Change (ppt)") +
+  ylim(0,4)->
+  CO2_p6
+
+print(CO2_p6)
+
+ggarrange(CO2_p1,CO2_p2,CO2_p3,CO2_p4,CO2_p5,CO2_p6,ncol=2,nrow=3,common.legend=T,labels="auto")
+```
+
+
+```{r soil adaptation, resistance, or resilience to changing salinity - statistics, eval=T, echo=FALSE}
+
+#Within a site, do soil cores adapt to local conditions or do they demonstrate resistance and/or resilience?
+
+#High salinity site - using optimal soil water and growing season
+
+flux2 %>%
+  filter(StudyYear=="1",
+         Local_Salinity=="High Local Salinity",
+         VWC_Cond=="Optimal",
+         Season=="Growing") ->
+  df1
+
+aov1 <- aov(logCO2~SalChange, data=df1)
+summary(aov1)#p=0.0.05
+
+tukey.test <- TukeyHSD(aov1)
+tukey.test
+#+1 to 0 p=0.05
+#+4 to 0 p=0.1
+#+4 to +1 p=0.97
+
+flux2 %>%
+  filter(StudyYear=="2",
+         Local_Salinity=="High Local Salinity",
+         VWC_Cond=="Optimal",
+         Season=="Growing") ->
+  df1
+
+aov1 <- aov(logCO2~SalChange, data=df1)
+summary(aov1)#p=0.0.04
+
+tukey.test <- TukeyHSD(aov1)
+tukey.test
+#+1 to 0 p=0.03
+#+4 to 0 p=0.01
+#+4 to +1 p=0.71
+
+#Mid salinity site - using optimal soil water and growing season
+
+flux2 %>%
+  filter(StudyYear=="1",
+         Local_Salinity=="Mid Local Salinity",
+         VWC_Cond=="Optimal",
+         Season=="Growing") ->
+  df1
+
+aov1 <- aov(logCO2~SalChange, data=df1)
+summary(aov1)#p=0.0.03
+
+tukey.test <- TukeyHSD(aov1)
+tukey.test
+#0 to -1 p=0.0003
+#+3 to -1 p=0.004
+#+3 to 0 p=0.92
+
+flux2 %>%
+  filter(StudyYear=="2",
+         Local_Salinity=="Mid Local Salinity",
+         VWC_Cond=="Optimal",
+         Season=="Growing") ->
+  df1
+
+aov1 <- aov(logCO2~SalChange, data=df1)
+summary(aov1)#p=0.91
+
+
+#Low salinity site - using optimal soil water and growing season
+
+flux2 %>%
+  filter(StudyYear=="1",
+         Local_Salinity=="Low Local Salinity",
+         VWC_Cond=="Optimal",
+         Season=="Growing") ->
+  df1
+
+aov1 <- aov(logCO2~SalChange, data=df1)
+summary(aov1)#p=0.0.48
+
+flux2 %>%
+  filter(StudyYear=="2",
+         Local_Salinity=="Low Local Salinity",
+         VWC_Cond=="Optimal",
+         Season=="Growing") ->
+  df1
+
+aov1 <- aov(logCO2~SalChange, data=df1)
+summary(aov1)#p=0.16
+
+tukey.test <- TukeyHSD(aov1)
+tukey.test
+#0 to -3 p = 0.09
+```
+
+```{r figures - soil adaptation to changing salinity, optimal H2O & growing season, log-transformed}
+flux2 %>%
+  filter(StudyYear==1,
+  VWC_Cond=="Optimal",
+  Season=="Growing",
+  Local_Salinity=="High Local Salinity") %>%
+  ggplot() +
+  geom_boxplot(aes(SalChange, logCO2, fill=Home_Salinity, color=Home_Salinity),size=1.1) +
+  scale_color_manual(values=c("turquoise3","gold2","violetred2")) +
+  scale_fill_manual(values=c("paleturquoise1", "lightgoldenrod1", "plum1")) +
+  theme(axis.text.x = element_text(size = 12),
+        axis.text.y = element_text(size = 12),
+        axis.title = element_text(face = "bold", size = 14),
+        legend.position = "top",
+        legend.title = element_blank()) +
+  ylab(expression(Log~Flux~(µmol~CO[2]~m^-2~s^-1))) +
+  xlab("Salinity Change (ppt)") +
+  ylim(0,4)->
+  CO2_p1
+
+print(CO2_p1)
+
+flux2 %>%
+  filter(StudyYear==2,
+  VWC_Cond=="Optimal",
+  Season=="Growing",
+  Local_Salinity=="High Local Salinity") %>%
+  ggplot() +
+  geom_boxplot(aes(SalChange, logCO2, fill=Home_Salinity, color=Home_Salinity),size=1.1) +
+  scale_color_manual(values=c("turquoise3","gold2","violetred2")) +
+  scale_fill_manual(values=c("paleturquoise1", "lightgoldenrod1", "plum1")) +
+  theme(axis.text.x = element_text(size = 12),
+        axis.text.y = element_text(size = 12),
+        axis.title = element_text(face = "bold", size = 14),
+        legend.position = "top",
+        legend.title = element_blank()) +
+  ylab(expression(Log~Flux~(µmol~CO[2]~m^-2~s^-1))) +
+  xlab("Salinity Change (ppt)") +
+  ylim(0,4)->
+  CO2_p2
+
+print(CO2_p2)
+
+flux2 %>%
+  filter(StudyYear==1,
+  VWC_Cond=="Optimal",
+  Season=="Growing",
+  Local_Salinity=="Mid Local Salinity") %>%
+  ggplot() +
+  geom_boxplot(aes(SalChange, logCO2, fill=Home_Salinity, color=Home_Salinity),size=1.1) +
+  scale_color_manual(values=c("turquoise3","gold2","violetred2")) +
+  scale_fill_manual(values=c("paleturquoise1", "lightgoldenrod1", "plum1")) +
+  theme(axis.text.x = element_text(size = 12),
+        axis.text.y = element_text(size = 12),
+        axis.title = element_text(face = "bold", size = 14),
+        legend.position = "top",
+        legend.title = element_blank()) +
+  ylab(expression(Log~Flux~(µmol~CO[2]~m^-2~s^-1))) +
+  xlab("Salinity Change (ppt)") +
+  ylim(0,4)->
+  CO2_p3
+
+print(CO2_p3)
+
+flux2 %>%
+  filter(StudyYear==2,
+  VWC_Cond=="Optimal",
+  Season=="Growing",
+  Local_Salinity=="Mid Local Salinity") %>%
+  ggplot() +
+  geom_boxplot(aes(SalChange, logCO2, fill=Home_Salinity, color=Home_Salinity),size=1.1) +
+  scale_color_manual(values=c("turquoise3","gold2","violetred2")) +
+  scale_fill_manual(values=c("paleturquoise1", "lightgoldenrod1", "plum1")) +
+  theme(axis.text.x = element_text(size = 12),
+        axis.text.y = element_text(size = 12),
+        axis.title = element_text(face = "bold", size = 14),
+        legend.position = "top",
+        legend.title = element_blank()) +
+  ylab(expression(Log~Flux~(µmol~CO[2]~m^-2~s^-1))) +
+  xlab("Salinity Change (ppt)") +
+  ylim(0,4)->
+  CO2_p4
+
+print(CO2_p4)
+
+flux2 %>%
+  filter(StudyYear==1,
+  VWC_Cond=="Optimal",
+  Season=="Growing",
+  Local_Salinity=="Low Local Salinity") %>%
+  ggplot() +
+  geom_boxplot(aes(SalChange, logCO2, fill=Home_Salinity, color=Home_Salinity),size=1.1) +
+  scale_color_manual(values=c("turquoise3","gold2","violetred2")) +
+  scale_fill_manual(values=c("paleturquoise1", "lightgoldenrod1", "plum1")) +
+  theme(axis.text.x = element_text(size = 12),
+        axis.text.y = element_text(size = 12),
+        axis.title = element_text(face = "bold", size = 14),
+        legend.position = "top",
+        legend.title = element_blank()) +
+  ylab(expression(Log~Flux~(µmol~CO[2]~m^-2~s^-1))) +
+  xlab("Salinity Change (ppt)") +
+  ylim(0,4)->
+  CO2_p5
+
+print(CO2_p5)
+
+flux2 %>%
+  filter(StudyYear==2,
+  VWC_Cond=="Optimal",
+  Season=="Growing",
+  Local_Salinity=="Low Local Salinity") %>%
+  ggplot() +
+  geom_boxplot(aes(SalChange, logCO2, fill=Home_Salinity, color=Home_Salinity),size=1.1) +
+  scale_color_manual(values=c("turquoise3","gold2","violetred2")) +
+  scale_fill_manual(values=c("paleturquoise1", "lightgoldenrod1", "plum1")) +
+  theme(axis.text.x = element_text(size = 12),
+        axis.text.y = element_text(size = 12),
+        axis.title = element_text(face = "bold", size = 14),
+        legend.position = "top",
+        legend.title = element_blank()) +
+  ylab(expression(Log~Flux~(µmol~CO[2]~m^-2~s^-1))) +
+  xlab("Salinity Change (ppt)") +
+  ylim(0,4)->
+  CO2_p6
+
+print(CO2_p6)
+
+ggarrange(CO2_p1,CO2_p2,CO2_p3,CO2_p4,CO2_p5,CO2_p6,ncol=2,nrow=3,common.legend=T,labels="auto")
+```
+
+## Soils without seawater exposure legacy 
+
+```{r reshaping data set, eval=FALSE, echo=FALSE}
+dir <- "./Data/premis-ghg/"
+
+read.csv(file.path(dir, "transplant_fluxes_2018_2020.csv"),
+         stringsAsFactors = FALSE) -> 
+  flux
+
+flux %>%
+  #Isolating elevation transect
+  filter(Elevation_Transect=="Y",
+  #Isolating transplanted soil cores       
+         Treatment=="Trenched",
+  #Removing error values
+          !CO2_Flux<0) %>%
+  #Re-formatting date
+  separate(Sampling_Event, into = c("Month", "Day", "Year"), sep = "/") %>%
+  unite("Date", Year, Month, Day, sep="-") %>%
+  mutate(Date = as.Date(Date),
+    Year = paste(year(Date)),
+    Month = paste(month(Date)),
+   #Adding growing season
+   Season = case_when(
+    Month %in% c(5,6,7,8,9,10) ~ "Growing",
+    TRUE ~ "Non-Growing"),
+   #Adding water status
+    VWC_Cond = case_when(
+    meanSM >= 0.2 & meanSM <= 0.4 ~ "Optimal",
+    meanSM >= 0 & meanSM <= 0.2 | meanSM >= 0.4 & meanSM <= 0.6 ~ "Stressful",
+    TRUE~"Other"),
+   #Adding mean change in salinity 
+   SalChange = case_when(
+    Collar %in% c(49,50,51,52) ~ "+4",
+    Collar %in% c(45,46,47,48,1,2,3,4) ~ "0",
+    Collar %in% c(37,38,39,40) ~ "-4"),
+   StudyYear = case_when(
+     year(.$Date) < 2019 | year(.$Date) <= 2019 & month(.$Date) <= 03 ~ "1",
+     TRUE ~ "2"),
+   #Setting factors and levels
+   Home_Elevation = factor(Home_Elevation, levels=c("Low", "Mid"), labels=c("Down Slope Home", "Up Slope Home")),
+    Local_Elevation = factor(Local_Elevation, levels=c("Low", "Mid"), labels=c("Down Slope Local", "Up Slope Local")),
+    Season = factor(Season, levels=c("Non-Growing", "Growing")),
+    SalChange = factor(SalChange, levels=c("-4","0","+4")),
+    VWC_Cond = factor(VWC_Cond, levels=c("Stressful","Optimal")),
+    Collar = factor(Collar)) %>%
+   #2020 timepoints have two fluxes - averaging all fluxes by day
+  group_by(Date, Year, Month, StudyYear, Collar, Home_Elevation, Local_Elevation, Season, SalChange, VWC_Cond) %>%
+  summarise(n = n(),
+            Date=mean(Date),
+            meanCO2=mean(CO2_Flux),
+            CO2SD=mean(CO2_sd),
+            meanCH4=mean(CH4_Flux),
+            meanSM=mean(meanSM),
+            meanT5=mean(meanT5),
+            meanT20=mean(meanT20)) ->
+  flux2
+
+flux2 %>%
+  mutate(Home_Salinity = case_when(
+    Home_Elevation=="Down Slope Home" ~ "High Home Salinity",
+    Home_Elevation=="Up Slope Home" ~ "No Home Salinity"),
+    Local_Salinity = case_when(
+      Local_Elevation=="Down Slope Local" ~ "High Local Salinity",
+      Local_Elevation=="Up Slope Local" ~ "No Local Salinity"),
+    Local_Salinity = factor(Local_Salinity, levels=c("No Local Salinity", "High Local Salinity")),
+    Home_Salinity = factor(Home_Salinity, levels=c("No Home Salinity", "High Home Salinity")))->
+  flux2
+
+flux2$logCO2 <- log(flux2$meanCO2)
+```
+
+```{r stats - changing salinity effects within HOME site}
+
+#How does chaning salinity effect CO2 flux within home site
+
+#High salinity home site - growing season
+
+flux2 %>%
+  filter(StudyYear=="1",
+         Home_Salinity=="High Home Salinity",
+         Season=="Growing") ->
+  df1
+
+aov1 <- aov(logCO2~SalChange, data=df1)
+summary(aov1)#p=047
+
+
+flux2 %>%
+  filter(StudyYear=="2",
+         Home_Salinity=="High Home Salinity",
+         Season=="Growing") ->
+  df1
+
+aov1 <- aov(logCO2~SalChange, data=df1)
+summary(aov1)#p=0.71
+
+#No salinity home site - growing season
+
+flux2 %>%
+  filter(StudyYear=="1",
+         Home_Salinity=="No Home Salinity",
+         Season=="Growing") ->
+  df1
+
+aov1 <- aov(logCO2~SalChange, data=df1)
+summary(aov1)#p=0.006
+
+flux2 %>%
+  filter(StudyYear=="2",
+         Home_Salinity=="No Home Salinity",
+         Season=="Growing") ->
+  df1
+
+aov1 <- aov(logCO2~SalChange, data=df1)
+summary(aov1)#p=0.01
+```
+
+```{r figures - figures - changing salinity effects within home site, log-transformed}
+flux2 %>%
+  filter(StudyYear==1,
+  Season=="Growing",
+  Home_Salinity=="High Home Salinity") %>%
+  ggplot() +
+  geom_boxplot(aes(SalChange, logCO2, fill=Home_Salinity, color=Home_Salinity),size=1.1) +
+  scale_color_manual(values=c("violetred2")) +
+  scale_fill_manual(values=c("plum1")) +
+  theme(axis.text.x = element_text(size = 12),
+        axis.text.y = element_text(size = 12),
+        axis.title = element_text(face = "bold", size = 14),
+        legend.position = "top",
+        legend.title = element_blank()) +
+  ylab(expression(Log~Flux~(µmol~CO[2]~m^-2~s^-1))) +
+  xlab("Salinity Change (ppt)")+
+  ylim(0,4)->
+  CO2_p1
+
+print(CO2_p1)
+
+flux2 %>%
+  filter(StudyYear==2,
+  Season=="Growing",
+  Home_Salinity=="High Home Salinity") %>%
+  ggplot() +
+  geom_boxplot(aes(SalChange, logCO2, fill=Home_Salinity, color=Home_Salinity),size=1.1) +
+  scale_color_manual(values=c("violetred2")) +
+  scale_fill_manual(values=c("plum1")) +
+  theme(axis.text.x = element_text(size = 12),
+        axis.text.y = element_text(size = 12),
+        axis.title = element_text(face = "bold", size = 14),
+        legend.position = "top",
+        legend.title = element_blank()) +
+  ylab(expression(Log~Flux~(µmol~CO[2]~m^-2~s^-1))) +
+  xlab("Salinity Change (ppt)")+
+  ylim(0,4)->
+  CO2_p2
+
+print(CO2_p2)
+
+flux2 %>%
+  filter(StudyYear==1,
+  Season=="Growing",
+  Home_Salinity=="No Home Salinity") %>%
+  ggplot() +
+  geom_boxplot(aes(SalChange, logCO2, fill=Home_Salinity, color=Home_Salinity),size=1.1) +
+  scale_color_manual(values=c("seagreen4")) +
+  scale_fill_manual(values=c("seagreen1")) +
+  theme(axis.text.x = element_text(size = 12),
+        axis.text.y = element_text(size = 12),
+        axis.title = element_text(face = "bold", size = 14),
+        legend.position = "top",
+        legend.title = element_blank()) +
+  ylab(expression(Log~Flux~(µmol~CO[2]~m^-2~s^-1))) +
+  xlab("Salinity Change (ppt)") +
+  ylim(0,4)->
+  CO2_p3
+
+print(CO2_p3)
+
+flux2 %>%
+  filter(StudyYear==2,
+  Season=="Growing",
+  Home_Salinity=="No Home Salinity") %>%
+  ggplot() +
+  geom_boxplot(aes(SalChange, logCO2, fill=Home_Salinity, color=Home_Salinity),size=1.1) +
+  scale_color_manual(values=c("seagreen4")) +
+  scale_fill_manual(values=c("seagreen1")) +
+  theme(axis.text.x = element_text(size = 12),
+        axis.text.y = element_text(size = 12),
+        axis.title = element_text(face = "bold", size = 14),
+        legend.position = "top",
+        legend.title = element_blank()) +
+  ylab(expression(Log~Flux~(µmol~CO[2]~m^-2~s^-1))) +
+  xlab("Salinity Change (ppt)")+
+  ylim(0,4)->
+  CO2_p4
+
+print(CO2_p4)
+
+ggarrange(CO2_p1,CO2_p2,CO2_p3,CO2_p4,ncol=2,nrow=2,common.legend=T,labels="auto")
+```
+
+```{r soil adaptation, resistance, or resilience to changing salinity - statistics, eval=T, echo=FALSE}
+
+#Within a site, do soil cores adapt to local conditions or do they demonstrate resistance and/or resilience?
+
+#High salinity site - using growing season
+
+flux2 %>%
+  filter(StudyYear=="1",
+         Local_Salinity=="High Local Salinity",
+         Season=="Growing") ->
+  df1
+
+aov1 <- aov(logCO2~SalChange, data=df1)
+summary(aov1)#p=0.0.009
+
+flux2 %>%
+  filter(StudyYear=="2",
+         Local_Salinity=="High Local Salinity",
+         Season=="Growing") ->
+  df1
+
+aov1 <- aov(logCO2~SalChange, data=df1)
+summary(aov1)#p=0.0.006
+
+
+#No salinity site - growing season
+
+flux2 %>%
+  filter(StudyYear=="1",
+         Local_Salinity=="No Local Salinity",
+         Season=="Growing") ->
+  df1
+
+aov1 <- aov(logCO2~SalChange, data=df1)
+summary(aov1)#p=0.57
+
+flux2 %>%
+  filter(StudyYear=="2",
+         Local_Salinity=="No Local Salinity",
+         Season=="Growing") ->
+  df1
+
+aov1 <- aov(logCO2~SalChange, data=df1)
+summary(aov1)#p=0.24
+```
+
+
+```{r figures - soil adaptation to changing salinity, growing season, log-transformed}
+flux2 %>%
+  filter(StudyYear==1,
+  Season=="Growing",
+  Local_Salinity=="High Local Salinity") %>%
+  ggplot() +
+  geom_boxplot(aes(SalChange, logCO2, fill=Home_Salinity, color=Home_Salinity),size=1.1) +
+  scale_color_manual(values=c("seagreen4", "violetred2")) +
+  scale_fill_manual(values=c("seagreen1", "plum1")) +
+  theme(axis.text.x = element_text(size = 12),
+        axis.text.y = element_text(size = 12),
+        axis.title = element_text(face = "bold", size = 14),
+        legend.position = "top",
+        legend.title = element_blank()) +
+  ylab(expression(Log~Flux~(µmol~CO[2]~m^-2~s^-1))) +
+  xlab("Salinity Change (ppt)")+
+  ylim(0,4)->
+  CO2_p1
+
+print(CO2_p1)
+
+flux2 %>%
+  filter(StudyYear==2,
+  Season=="Growing",
+  Local_Salinity=="High Local Salinity") %>%
+  ggplot() +
+  geom_boxplot(aes(SalChange, logCO2, fill=Home_Salinity, color=Home_Salinity),size=1.1) +
+  scale_color_manual(values=c("seagreen4", "violetred2")) +
+  scale_fill_manual(values=c("seagreen1", "plum1")) +
+  theme(axis.text.x = element_text(size = 12),
+        axis.text.y = element_text(size = 12),
+        axis.title = element_text(face = "bold", size = 14),
+        legend.position = "top",
+        legend.title = element_blank()) +
+  ylab(expression(Log~Flux~(µmol~CO[2]~m^-2~s^-1))) +
+  xlab("Salinity Change (ppt)")+
+  ylim(0,4)->
+  CO2_p2
+
+print(CO2_p2)
+
+flux2 %>%
+  filter(StudyYear==1,
+  Season=="Growing",
+  Local_Salinity=="No Local Salinity") %>%
+  ggplot() +
+  geom_boxplot(aes(SalChange, logCO2, fill=Home_Salinity, color=Home_Salinity),size=1.1) +
+  scale_color_manual(values=c("seagreen4", "violetred2")) +
+  scale_fill_manual(values=c("seagreen1", "plum1")) +
+  theme(axis.text.x = element_text(size = 12),
+        axis.text.y = element_text(size = 12),
+        axis.title = element_text(face = "bold", size = 14),
+        legend.position = "top",
+        legend.title = element_blank()) +
+  ylab(expression(Log~Flux~(µmol~CO[2]~m^-2~s^-1))) +
+  xlab("Salinity Change (ppt)") +
+  ylim(0,4)->
+  CO2_p3
+
+print(CO2_p3)
+
+flux2 %>%
+  filter(StudyYear==2,
+  Season=="Growing",
+  Local_Salinity=="No Local Salinity") %>%
+  ggplot() +
+  geom_boxplot(aes(SalChange, logCO2, fill=Home_Salinity, color=Home_Salinity),size=1.1) +
+  scale_color_manual(values=c("seagreen4", "violetred2")) +
+  scale_fill_manual(values=c("seagreen1", "plum1")) +
+  theme(axis.text.x = element_text(size = 12),
+        axis.text.y = element_text(size = 12),
+        axis.title = element_text(face = "bold", size = 14),
+        legend.position = "top",
+        legend.title = element_blank()) +
+  ylab(expression(Log~Flux~(µmol~CO[2]~m^-2~s^-1))) +
+  xlab("Salinity Change (ppt)")+
+  ylim(0,4)->
+  CO2_p4
+
+print(CO2_p4)
+
+ggarrange(CO2_p1,CO2_p2,CO2_p3,CO2_p4,ncol=2,nrow=2,common.legend=T,labels="auto")
+```
