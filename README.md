@@ -1,3 +1,13 @@
+This repository has been archived and is no longer maintained.
+The code is provided for historical reference and may contain unpatched or unknown vulnerabilities.
+It should not be used in production systems.
+
+Published papers from this work:
+* Hopple, A. M., Pennington, S. C., Megonigal, J. P., Bailey, V., and Bond-Lamberty, B.: Disturbance legacies regulate coastal forest soil stability to changing salinity and inundation: A soil transplant experiment, Soil Biol. Biochem., 169, 108675, 2022.
+* Morris, K. A., Smith, M., Bailey, V. L., Bittencourt-Peixoto, R., Day, D. J., Hamovit, N., Hopple, A. M., Lee, J., Patel, K. F., Regier, P., Wilson, S. J., Yarwood, S. A., Megonigal, P., and Bond-Lamberty, B.: Methane flux from transplanted soil monoliths depends on moisture, but not origin, Soil Biol. Biochem., 193, 109296, 2024.
+
+
+
 # SOIL TRANSPLANT EXPERIMENT
 
 ## Understanding the response of coastal forest carbon cycling to changing salinity and moisture content: a soil transplant experiment
